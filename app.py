@@ -99,7 +99,7 @@ PAGE = """
     {% for t in state.last_temps %}
     <div class="gpu-block">
       <div class="gpu-name">{{ t.card }}</div>
-      <div class="sensor-row"><span class="sensor-label">Edge</span><span>{{ "%.1f"|format(t.edge_c) + "&deg;C" if t.edge_c is not none else "--" }}</span></div>
+      <div class="sensor-row"><span class="sensor-label">{{ "GPU" if t.fan_curve_kind == "gpu" else "Edge" }}</span><span>{{ "%.1f"|format(t.edge_c) + "&deg;C" if t.edge_c is not none else "--" }}</span></div>
       <div class="sensor-row"><span class="sensor-label">Junction</span><span class="{{ 'hot' if t.junction_c is not none and t.junction_c >= settings.target_max_c else 'ok' }}">{{ "%.1f"|format(t.junction_c) + "&deg;C" if t.junction_c is not none else "--" }}</span></div>
       <div class="sensor-row"><span class="sensor-label">Memory</span><span>{{ "%.1f"|format(t.memory_c) + "&deg;C" if t.memory_c is not none else "--" }}</span></div>
       <div class="sensor-row"><span class="sensor-label">MCLK top / now</span><span>{{ "%d"|format(t.mclk_top_mhz) if t.mclk_top_mhz is not none else "--" }} / {{ "%.0f"|format(t.mclk_mhz) if t.mclk_mhz is not none else "--" }} MHz</span></div>

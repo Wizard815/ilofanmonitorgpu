@@ -17,7 +17,7 @@ ILO_HOST = os.environ.get("ILO_HOST", "")  # required: your iLO address
 ILO_VERIFY_SSL = os.environ.get("ILO_VERIFY_SSL", "false").lower() == "true"
 SECRETS_PATH = os.environ.get("ILO_SECRETS_PATH", "/run/secrets/ilo_creds.json")
 
-LOG_PREFIX = "[mi50-fan-bridge]"
+LOG_PREFIX = "[fan-bridge]"
 
 
 def log(msg: str) -> None:
@@ -102,9 +102,64 @@ def get_gpu_sensors_sysfs() -> list:
     return results
 
 
+GPU_VENDOR = os.environ.get("GPU_VENDOR", "auto").strip().lower()   # auto | nvidia | amd
+NV_FIELDS = "index,pci.bus_id,temperature.gpu,temperature.memory,power.draw,utilization.gpu,clocks.mem"
+
+
+def _nv_num(s: str):
+    s = s.strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None   # "N/A", "[N/A]", "[Not Supported]"
+
+
+def get_gpu_sensors_nvidia() -> list:
+    """
+    NVIDIA GPUs via nvidia-smi (one call, ~50-100 ms). NVML exposes no
+    hotspot/junction temperature, so the fan curve runs on the core temp
+    (fan_curve_kind "gpu"). temperature.memory is only reported by HBM
+    data-center cards (A100, V100, H100); GeForce/Quadro return N/A.
+    Returns [] if nvidia-smi is missing or fails.
+    """
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", f"--query-gpu={NV_FIELDS}", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    results = []
+    for line in out.stdout.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) != 7:
+            continue
+        idx, bus, t_gpu, t_mem, power, util, mclk = parts
+        t_gpu, t_mem = _nv_num(t_gpu), _nv_num(t_mem)
+        if t_gpu is None and t_mem is None:
+            continue
+        results.append({
+            "card": f"nvidia{idx}",
+            "pci": bus.lower().replace("00000000:", "0000:"),
+            "temp_c": max(v for v in (t_gpu, t_mem) if v is not None),
+            "fan_curve_c": t_gpu,
+            "fan_curve_kind": "gpu",
+            "edge_c": t_gpu, "junction_c": None, "memory_c": t_mem,
+            "power_w": _nv_num(power),
+            "busy_pct": _nv_num(util),
+            "mclk_mhz": _nv_num(mclk),
+            "mclk_top_mhz": None,
+        })
+    return results
+
+
 def get_gpu_sensors() -> list:
-    """sysfs first (fast, has power/busy); rocm-smi only if sysfs gives nothing."""
-    return get_gpu_sensors_sysfs() or get_junction_temps()
+    """GPU_VENDOR=nvidia: nvidia-smi. amd: sysfs, then rocm-smi. auto: NVIDIA if present, else AMD."""
+    if GPU_VENDOR == "nvidia":
+        return get_gpu_sensors_nvidia()
+    if GPU_VENDOR == "amd":
+        return get_gpu_sensors_sysfs() or get_junction_temps()
+    return get_gpu_sensors_nvidia() or get_gpu_sensors_sysfs() or get_junction_temps()
 
 
 def get_junction_temps() -> list:

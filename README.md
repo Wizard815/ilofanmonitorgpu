@@ -1,7 +1,7 @@
 # ilofanmonitorgpu (fan-bridge)
 
 Drives HPE iLO chassis fans from GPU temperatures. iLO cannot see the
-temperature of add-in GPUs like the AMD Instinct MI50/MI60, so on its own
+temperature of add-in GPUs like the AMD Instinct MI50/MI60 or NVIDIA cards, so on its own
 it never spins the fans up for them. fan-bridge reads the GPU sensors every
 second and raises iLO's global minimum fan speed when the GPUs get busy or
 hot, then hands control back to iLO once they cool down.
@@ -37,6 +37,29 @@ Tested on iLO 5 (v3.14, HPE ML350 Gen10) with two MI50s (gfx906, ROCm).
   Docker healthcheck fails if the loop stops polling.
 - **Dashboard** at `:5000` with all settings, live per-GPU sensors, MCLK and
   perf mode, and the log.
+
+## NVIDIA GPUs (this branch)
+
+`GPU_VENDOR` picks the sensor source: `nvidia` (nvidia-smi), `amd` (sysfs,
+then rocm-smi) or `auto` (NVIDIA if `nvidia-smi` is present, else AMD). The
+compose file here runs with `runtime: nvidia` and
+`NVIDIA_DRIVER_CAPABILITIES=utility`, which needs the NVIDIA Container Toolkit
+(on Unraid: the Nvidia Driver plugin).
+
+What is read per GPU: core temperature, memory temperature (HBM data-center
+cards only; GeForce/Quadro report N/A), power, utilization and memory clock.
+
+Differences from AMD:
+
+- NVML has no hotspot/junction sensor, so the curve runs on the **core**
+  temperature, which reads well below an AMD junction. Lower the curve and
+  `target_max_c` to match: NVIDIA cards start to slow down around 83-90 C core
+  (check `nvidia-smi -q -d TEMPERATURE` for your card's slowdown temperature).
+- `mem_offset_c` applies to the HBM temperature when the card reports one.
+- Perf on demand and the MCLK step are AMD MI50/MI60 only and stay off.
+
+Not tested on real NVIDIA hardware yet; the parsing was tested against
+sample `nvidia-smi` output.
 
 ## How the fan control works
 
