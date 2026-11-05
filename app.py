@@ -102,13 +102,11 @@ PAGE = """
       <div class="sensor-row"><span class="sensor-label">Edge</span><span>{{ "%.1f"|format(t.edge_c) + "&deg;C" if t.edge_c is not none else "--" }}</span></div>
       <div class="sensor-row"><span class="sensor-label">Junction</span><span class="{{ 'hot' if t.junction_c is not none and t.junction_c >= settings.target_max_c else 'ok' }}">{{ "%.1f"|format(t.junction_c) + "&deg;C" if t.junction_c is not none else "--" }}</span></div>
       <div class="sensor-row"><span class="sensor-label">Memory</span><span>{{ "%.1f"|format(t.memory_c) + "&deg;C" if t.memory_c is not none else "--" }}</span></div>
-      <div class="sensor-row"><span class="sensor-label">MCLK top / now</span><span>{{ "%d"|format(t.mclk_top_mhz) if t.mclk_top_mhz is not none else "--" }} / {{ "%.0f"|format(t.mclk_mhz) if t.mclk_mhz is not none else "--" }} MHz</span></div>
       <div class="sensor-row"><span class="sensor-label">Power / busy</span><span>{{ "%.0f W"|format(t.power_w) if t.power_w is not none else "--" }} / {{ "%.0f%%"|format(t.busy_pct) if t.busy_pct is not none else "--" }}</span></div>
     </div>
     {% else %}
     <p>No data.</p>
     {% endfor %}
-    <p style="color:#999; font-size:0.8rem;">MCLK step (FAN_BRIDGE_MCLK={{ state.mclk.target if state.mclk.target else "off" }}): {{ state.mclk.status }}{% for pci, c in state.mclk.cards.items() %} | {{ pci }}: {{ c.result or "-" }}{% endfor %}</p>
   </div>
 
   <h2>Settings</h2>

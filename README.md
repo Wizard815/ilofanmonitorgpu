@@ -1,4 +1,6 @@
-# ilofanmonitorgpu (fan-bridge)
+# ilofanmonitorgpu (fan-bridge) -- pre-MCLK version
+
+This branch is fan-bridge before the optional memory clock step was added.
 
 Drives HPE iLO chassis fans from GPU temperatures. iLO cannot see the
 temperature of add-in GPUs like the AMD Instinct MI50/MI60, so on its own
@@ -26,16 +28,10 @@ Tested on iLO 5 (v3.14, HPE ML350 Gen10) with two MI50s (gfx906, ROCm).
   while the GPUs are in use, `auto` after `perf_idle_sec` idle (about half the
   idle power, cooler heatsinks). Off = always `high`. Needs the writable sysfs
   mounts below.
-- **MCLK step (optional, off by default):** at container start, with the GPUs
-  idle, raise the top memory clock state of the listed MI50s
-  (`smcPPTable/FreqTableUclk/2` and `/3`, via [UPP](https://github.com/sibradzic/upp)).
-  Skips cards already at the target, backs up each pp_table first and restores
-  it on any failure. Never touches voltages, timings, SCLK or the power limit.
-  Nothing is flashed: a reboot loads the stock VBIOS table.
 - **Safety:** the loop restarts itself after a crash; if GPU sensors vanish
   it pushes `failsafe_fan_pct`; a stale floor left by a restart is released;
   Docker healthcheck fails if the loop stops polling.
-- **Dashboard** at `:5000` with all settings, live per-GPU sensors, MCLK and
+- **Dashboard** at `:5000` with all settings, live per-GPU sensors and
   perf mode, and the log.
 
 ## How the fan control works
@@ -61,7 +57,7 @@ writable on this firmware.
    cp ilo_creds.json.example secrets/ilo_creds.json   # then edit it
    ```
 3. **Edit `docker-compose.yml`:** set `ILO_HOST`. Optionally add the writable
-   GPU mounts (perf on demand, MCLK step) and the MCLK settings.
+   GPU mounts (perf on demand).
 4. **Build and run:** `docker compose up -d --build`
 5. **Dashboard:** `http://<host>:5000`
 
@@ -87,8 +83,7 @@ re-reads it every cycle. Main keys:
 | `perf_busy_pct` / `perf_power_w` | 20 / 80 | what counts as "in use" |
 
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
-`SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
-(comma-separated PCI addresses), `FAN_BRIDGE_MCLK_WAIT_SEC` (default 1800).
+`SETTINGS_PATH`.
 
 ## Notes
 
@@ -96,6 +91,4 @@ Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 - If a different iLO/firmware rejects the PATCH (`PropertyNotWritable`),
   capture the request iLO's own fan dialog sends (browser F12 -> Network) and
   update `ilo_fan.py` to match.
-- The MCLK step and perf on demand write GPU sysfs files. Test any memory
-  clock by hand first (perplexity unchanged, no RAS/dmesg errors, sane
-  temperatures) before letting the container apply it at every start.
+- Perf on demand writes `power_dpm_force_performance_level` in GPU sysfs.

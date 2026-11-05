@@ -36,16 +36,6 @@ def _read_num(path: str):
         return None
 
 
-def _top_mclk(dev: str):
-    """Top pp_dpm_mclk state in MHz ('2: 1180Mhz *' -> 1180), None if unreadable."""
-    try:
-        with open(os.path.join(dev, "pp_dpm_mclk")) as f:
-            last = f.read().strip().splitlines()[-1]
-        return int(last.split(":")[1].strip().split("Mhz")[0])
-    except (OSError, IndexError, ValueError):
-        return None
-
-
 def get_gpu_sensors_sysfs() -> list:
     """
     Reads every amdgpu card straight from sysfs (~1 ms total, vs ~160 ms
@@ -96,8 +86,6 @@ def get_gpu_sensors_sysfs() -> list:
             "edge_c": edge_val, "junction_c": junction_val, "memory_c": memory_val,
             "power_w": power / 1e6 if power is not None else None,
             "busy_pct": busy,
-            "mclk_mhz": (lambda v: v / 1e6 if v is not None else None)(_read_num(os.path.join(hw, "freq2_input"))),
-            "mclk_top_mhz": _top_mclk(dev),
         })
     return results
 

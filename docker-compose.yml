@@ -30,20 +30,14 @@ services:
       - ILO_SECRETS_PATH=/run/secrets/ilo_creds.json
       - SETTINGS_PATH=/data/settings.json
       - HSA_OVERRIDE_GFX_VERSION=9.0.6  # lets rocm-smi (fallback sensor path) enumerate gfx906
-      # Optional memory clock step at container start (mclk.py), off by default.
-      # Set a target MHz and the PCI addresses of the GPUs to change, e.g.:
-      #   FAN_BRIDGE_MCLK=1180
-      #   FAN_BRIDGE_MCLK_PCI=0000:03:00.0,0000:04:00.0
-      - FAN_BRIDGE_MCLK=off
-      - FAN_BRIDGE_MCLK_PCI=
 
     volumes:
       - ./secrets/ilo_creds.json:/run/secrets/ilo_creds.json:ro
       - ./data:/data   # settings.json persists here across rebuilds/restarts
-      # Optional, needed for perf-on-demand and the MCLK step: one writable sysfs
+      # Optional, needed for perf-on-demand: one writable sysfs
       # device dir per GPU. Use the colon-free /sys/class/drm/cardN/device path
-      # (find yours with: ls -l /sys/class/drm/card*/device). perf.py and mclk.py
-      # only touch dirs whose PCI id is an MI50/MI60 (and, for MCLK, in FAN_BRIDGE_MCLK_PCI).
+      # (find yours with: ls -l /sys/class/drm/card*/device). perf.py
+      # only touches dirs whose PCI id is an MI50/MI60.
       # - type: bind
       #   source: /sys/class/drm/card1/device
       #   target: /gpu/card1

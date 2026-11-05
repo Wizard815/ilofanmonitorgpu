@@ -25,7 +25,6 @@ import time
 
 import config
 import ilo_fan
-import mclk
 import perf
 
 # Shared, thread-safe-ish state for the UI to read. Simple dict + lock is
@@ -58,9 +57,7 @@ def _record_log(msg: str) -> None:
 
 def get_state_snapshot() -> dict:
     with _state_lock:
-        snap = {**state, "recent_log": list(state["recent_log"])}
-    snap["mclk"] = mclk.snapshot()
-    return snap
+        return {**state, "recent_log": list(state["recent_log"])}
 
 
 def run_forever() -> None:
@@ -319,5 +316,4 @@ def _supervise() -> None:
 def start_background_thread() -> threading.Thread:
     t = threading.Thread(target=_supervise, daemon=True, name="fan-poll-loop")
     t.start()
-    mclk.start_thread(_record_log)  # own thread: the fan loop never waits on it
     return t

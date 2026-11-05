@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --break-system-packages only exists on pip >=23 (PEP 668 guard) --
 # this base image's pip3 is older and doesn't recognize it, so try with
 # the flag first and fall back to a plain install if that flag errors.
-RUN pip3 install --no-cache-dir --break-system-packages requests flask gunicorn upp==0.2.4 \
-    || pip3 install --no-cache-dir requests flask gunicorn upp==0.2.4
+RUN pip3 install --no-cache-dir --break-system-packages requests flask gunicorn \
+    || pip3 install --no-cache-dir requests flask gunicorn
 
 WORKDIR /app
-COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py /app/
+COPY config.py ilo_fan.py loop.py app.py perf.py /app/
 
 # Settings persist here -- mount this as a volume so edits survive restarts.
 RUN mkdir -p /data
