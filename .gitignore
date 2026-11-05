@@ -1,0 +1,8 @@
+# local state and secrets -- never commit
+secrets/
+data/
+ilorest_logs/
+*.pp_table
+__pycache__/
+*.pyc
+.env
