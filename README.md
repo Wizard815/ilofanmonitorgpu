@@ -13,30 +13,37 @@ Tested on iLO 5 (v3.14, HPE ML350 Gen10) with two MI50s (gfx906, ROCm).
 - **1 s polling straight from sysfs** (`/sys/class/drm/card*/device/hwmon`):
   edge, junction and HBM temperature, power and busy %. `rocm-smi` is the
   fallback.
-- **Load trigger:** as soon as any GPU draws `load_power_w` or reaches
-  `load_busy_pct`, the fan floor jumps to `load_floor_pct`, before the heat
-  arrives. Junction can rise 20+ C within a second of load, faster than a
-  temperature-only loop can react.
-- **Fan curve** (7 draggable points) on junction temperature, and on HBM +
-  `mem_offset_c` (HBM has a lower limit than junction).
-- **Fast up, slow down:** the floor rises at once, but drops only after the
-  lower value has held `step_down_sec`, by at most `step_down_pct` per step.
-- **Cooldown / release timers** before handing the fans back to iLO.
+- **One curve, one floor.** The control temperature is the hottest of
+  junction and HBM + `mem_offset_c` across all GPUs. The curve maps it to a
+  fan minimum. Below the first curve point iLO runs the fans on its own.
+- **Load boost:** as soon as any GPU draws `load_power_w` or reaches
+  `load_busy_pct`, the minimum jumps to `load_floor_pct`, before the heat
+  arrives (junction can rise 20+ C within a second of load).
+- **Fast up, hold, step down:** the minimum rises at once. When it is no
+  longer needed it holds for `hold_sec`, then drops `step_down_pct` every
+  `step_down_sec` until it is back at `min_fan_pct` and iLO is in charge.
+  Targets are rounded up to `quantize_pct` so iLO isn't re-PATCHed for every
+  1% wiggle.
+- **iLO readback:** actual per-fan speeds, the current minimum and ambient
+  temperature are read from iLO every `ilo_poll_sec` (and right after each
+  change), so you can see whether the minimum is actually doing anything.
+- **Live dashboard** at `:5000`: status, per-fan bars, 15-minute temperature
+  and fan history, per-GPU sensors, a draggable curve that shows where you
+  are on it right now, and settings that save as you edit them. Works on a
+  phone, follows the OS light/dark setting.
 - **Perf on demand (optional):** `power_dpm_force_performance_level` = `high`
-  while the GPUs are in use, `auto` after `perf_idle_sec` idle (about half the
-  idle power, cooler heatsinks). Off = always `high`. Needs the writable sysfs
-  mounts below.
+  while the GPUs are in use, `auto` after `perf_idle_sec` idle. Needs the
+  writable sysfs mounts below.
 - **MCLK step (optional, off by default):** at container start, with the GPUs
   idle, raise the top memory clock state of the listed MI50s
   (`smcPPTable/FreqTableUclk/2` and `/3`, via [UPP](https://github.com/sibradzic/upp)).
-  Skips cards already at the target, backs up each pp_table first and restores
-  it on any failure. Never touches voltages, timings, SCLK or the power limit.
-  Nothing is flashed: a reboot loads the stock VBIOS table.
-- **Safety:** the loop restarts itself after a crash; if GPU sensors vanish
-  it pushes `failsafe_fan_pct`; a stale floor left by a restart is released;
-  Docker healthcheck fails if the loop stops polling.
-- **Dashboard** at `:5000` with all settings, live per-GPU sensors, MCLK and
-  perf mode, and the log.
+  Backs up each pp_table first and restores it on any failure. Nothing is
+  flashed: a reboot loads the stock VBIOS table.
+- **Safety:** threads restart themselves after a crash; if GPU sensors vanish
+  for `failsafe_after_polls` polls it sets `failsafe_fan_pct`; on start it
+  reads the minimum iLO already has and holds/steps it down normally; settings
+  are validated and written atomically; the Docker healthcheck fails if the
+  loop stops polling. Without iLO credentials it runs in dry-run mode.
 
 ## How the fan control works
 
@@ -48,8 +55,12 @@ PATCH /redfish/v1/Chassis/1/Thermal
 {"Oem":{"Hpe":{"FanPercentMinimum": <0-100>}}}
 ```
 
-It raises the floor of every chassis fan at once. Per-fan control is not
-writable on this firmware.
+It raises the floor of every chassis fan at once; iLO's own thermal logic
+still runs on top and can go higher. Per-fan control is not writable on this
+firmware, and the host OS (Unraid included) has no access to the chassis fans
+at all: they hang off the system board and only iLO drives them. A minimum
+below what iLO is already running has no effect, which is why the dashboard
+shows the actual fan speeds next to it.
 
 ## Setup
 
@@ -72,25 +83,33 @@ re-reads it every cycle. Main keys:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `thresholds` | 7-point curve | `[temp_c, fan_pct]` points |
-| `target_max_c` | 78 | trigger: script takes over at or above this |
+| `thresholds` | 6-point curve | `[temp_c, fan_pct]` points on control temp |
 | `load_power_w` / `load_busy_pct` | 100 / 50 | what counts as "under load" |
-| `load_floor_pct` | 40 | floor while under load (0 = load trigger off) |
-| `step_down_sec` / `step_down_pct` | 20 / 5 | how slowly the floor drops |
-| `cooldown_sec` / `release_sec` | 60 / 120 | timers before handing back to iLO |
-| `min_fan_pct` | 0 | floor after release (0 = iLO fully in control) |
-| `idle_poll_sec` / `active_poll_sec` | 1 / 1 | poll intervals |
-| `mem_offset_c` | 11 | HBM is treated as this much hotter (null = ignore HBM) |
-| `failsafe_fan_pct` / `failsafe_after_polls` | 60 / 5 | floor when sensors vanish |
+| `load_floor_pct` | 40 | minimum while under load (0 = off) |
+| `hold_sec` | 60 | hold before stepping down |
+| `step_down_sec` / `step_down_pct` | 15 / 5 | how fast it steps down |
+| `min_fan_pct` | 0 | idle minimum (0 = iLO fully in control) |
+| `quantize_pct` | 5 | round targets up to this step |
+| `poll_sec` / `ilo_poll_sec` | 1 / 5 | GPU and iLO read intervals |
+| `mem_offset_c` | 11 | HBM counts as this much hotter (null = ignore HBM) |
+| `failsafe_fan_pct` / `failsafe_after_polls` | 60 / 5 | minimum when sensors vanish |
 | `perf_control` | false | perf on demand on/off |
 | `perf_idle_sec` | 600 | idle time before `auto` |
 | `perf_busy_pct` / `perf_power_w` | 20 / 80 | what counts as "in use" |
+
+Settings from the old trigger/cooldown/release version are dropped on first
+load; a customised 7-point curve is replaced by the default 6-point one.
+
+API: `GET /api/state`, `GET /api/history?since=<ts>`,
+`POST /api/settings` (any subset of the keys above, JSON), `GET /api/fans`.
 
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 `SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
 (comma-separated PCI addresses), `FAN_BRIDGE_MCLK_WAIT_SEC` (default 1800).
 
 ## Notes
+
+- Tests: `python3 -m pytest tests`.
 
 - Logs: `docker logs -f fan-bridge`, or the Log card on the dashboard.
 - If a different iLO/firmware rejects the PATCH (`PropertyNotWritable`),

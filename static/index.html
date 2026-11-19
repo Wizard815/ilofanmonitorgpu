@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fan Bridge</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2; --surface: #fcfcfb; --surface-2: #efeeeb; --border: #e0dfda;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #85837d;
+  --grid: #e7e6e2; --axis: #b9b7b0;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+  --good: #008300; --warn: #b77a00; --crit: #c93332;
+  --accent: #2a78d6; --accent-text: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #2e2e2b;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8b8a82;
+    --grid: #2a2a27; --axis: #4a4a45;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+    --good: #0ca30c; --warn: #d9a011; --crit: #e66767;
+    --accent: #3987e5; --accent-text: #fff;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #2e2e2b;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8b8a82;
+  --grid: #2a2a27; --axis: #4a4a45;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  --good: #0ca30c; --warn: #d9a011; --crit: #e66767;
+  --accent: #3987e5; --accent-text: #fff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 16px; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.crit { background: var(--crit); }
+.dot.info { background: var(--s1); }
+button { font: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+button:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.grid { display: grid; gap: 12px; }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 820px) { .g3, .g2 { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.big { font-size: 40px; font-weight: 650; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.big small { font-size: 18px; font-weight: 500; color: var(--text-2); margin-left: 2px; }
+.sub { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+.muted { color: var(--muted); }
+.row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+.row .k { color: var(--text-2); }
+.bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin: 2px 0 6px; }
+.bar > i { display: block; height: 100%; border-radius: 3px; background: var(--s1); transition: width .4s; }
+.bar.t > i { background: var(--good); } .bar.t.warn > i { background: var(--warn); } .bar.t.crit > i { background: var(--crit); }
+.fanrow { display: grid; grid-template-columns: 64px 1fr 40px; gap: 8px; align-items: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fanrow .bar { margin: 0; }
+.fanrow .v { text-align: right; }
+.section { margin-top: 12px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; user-select: none; -webkit-user-select: none; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 4px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; background: var(--c); }
+.legend span.dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+.chart-wrap { position: relative; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); display: none; white-space: nowrap; z-index: 2; }
+.tip b { font-weight: 600; }
+.curve-pts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+@media (max-width: 560px) { .curve-pts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.curve-pts label { font-size: 11px; color: var(--muted); display: block; }
+.curve-pts .pair { display: flex; gap: 4px; }
+input[type=number] { font: inherit; width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-variant-numeric: tabular-nums; }
+input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.field { display: grid; grid-template-columns: 1fr 88px; gap: 8px; align-items: center; padding: 4px 0; }
+.field span { color: var(--text-2); font-size: 13px; }
+.field .unit { position: relative; }
+.field .unit::after { content: attr(data-u); position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }
+.field .unit input { padding-right: 26px; }
+.help { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; color: var(--text-2); font-size: 13px; }
+.log { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 260px; overflow: auto; white-space: pre-wrap; color: var(--text-2); }
+details summary { cursor: pointer; color: var(--text-2); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.err { color: var(--crit); font-size: 13px; margin-top: 6px; }
+.gpu-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.gpu-head b { font-size: 15px; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Fan Bridge</h1>
+    <span class="pill" id="phasePill"><span class="dot" id="phaseDot"></span><span id="phaseText">Connecting…</span></span>
+    <span class="spacer"></span>
+    <span class="muted" id="ago"></span>
+    <button id="pauseBtn">Pause</button>
+  </header>
+
+  <div class="grid g3">
+    <div class="card">
+      <h2>Fan minimum (set on iLO)</h2>
+      <div class="big" id="floor">--<small>%</small></div>
+      <div class="sub" id="floorSub">&nbsp;</div>
+    </div>
+    <div class="card">
+      <h2>Chassis fans (iLO reading)</h2>
+      <div id="fans" class="muted">Waiting for iLO…</div>
+      <div class="sub" id="iloSub"></div>
+    </div>
+    <div class="card">
+      <h2>Control temperature</h2>
+      <div class="big" id="ctl">--<small>°C</small></div>
+      <div class="sub" id="ctlSub">&nbsp;</div>
+    </div>
+  </div>
+  <div id="errBox" class="err"></div>
+
+  <div class="grid g2 section">
+    <div class="card">
+      <h2>Control temperature, last 15 min</h2>
+      <div class="chart-wrap"><svg id="tempChart" viewBox="0 0 520 170"></svg><div class="tip" id="tempTip"></div></div>
+    </div>
+    <div class="card">
+      <h2>Fan speed, last 15 min</h2>
+      <div class="legend"><span style="--c:var(--s1)">Minimum set</span><span style="--c:var(--s2)">iLO actual (avg)</span></div>
+      <div class="chart-wrap"><svg id="fanChart" viewBox="0 0 520 152"></svg><div class="tip" id="fanTip"></div></div>
+    </div>
+  </div>
+
+  <div class="grid g2 section" id="gpus"></div>
+
+  <div class="card section">
+    <h2>Fan curve</h2>
+    <div class="legend">
+      <span style="--c:var(--s1)">Curve (drag points)</span>
+      <span class="dash" style="--c:var(--s2)">Load minimum</span>
+      <span style="--c:var(--text)">● Now</span>
+    </div>
+    <div class="chart-wrap"><svg id="curve" viewBox="0 0 720 280" style="touch-action:none"></svg><div class="tip" id="curveTip"></div></div>
+    <div class="curve-pts" id="curvePts"></div>
+    <p class="help">X axis is the control temperature: the hottest of junction and HBM + offset, across both GPUs. Below the first point iLO runs the fans on its own. The fan minimum only has an effect once it is above what iLO is already doing.</p>
+    <div style="margin-top:8px"><button id="resetCurve">Reset curve</button></div>
+  </div>
+
+  <div class="card section">
+    <h2>Behaviour</h2>
+    <div class="settings" id="settings"></div>
+  </div>
+
+  <div class="card section">
+    <details>
+      <summary>Log</summary>
+      <div class="log" id="log" style="margin-top:8px"></div>
+    </details>
+  </div>
+  <p class="muted" id="mclk" style="font-size:12px"></p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const fmt = (v, d = 0) => v == null ? '--' : Number(v).toFixed(d);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S = null, ST = null, hist = [], lastHistTs = 0, dragging = null;
+const DEFAULT_CURVE = [[60,15],[70,25],[78,35],[84,50],[90,70],[96,100]];
+const T_MIN = 30, T_MAX = 110;
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1600); }
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function saveSettings(partial, msg = 'Saved') {
+  try { const j = await api('/api/settings', partial); S = j.settings; toast(msg); renderCurve(); }
+  catch (e) { toast('Save failed: ' + e.message); }
+}
+
+// ---------- settings form ----------
+const FIELDS = [
+  ['Load boost', 'GPU power or busy past these values sets the load minimum right away, before the heat arrives.', [
+    ['load_floor_pct', 'Load minimum', '%'], ['load_power_w', 'Power at or above', 'W'], ['load_busy_pct', 'Or busy at or above', '%']]],
+  ['Coming back down', 'Once the curve or load no longer needs the current minimum: hold, then step down until iLO is back in charge.', [
+    ['hold_sec', 'Hold before stepping', 's'], ['step_down_pct', 'Step size', '%'], ['step_down_sec', 'Every', 's'], ['min_fan_pct', 'Idle minimum', '%']]],
+  ['Safety', 'HBM runs out of headroom before junction (~94 vs ~105 °C), so it counts as this much hotter.', [
+    ['mem_offset_c', 'HBM offset', '°C'], ['failsafe_fan_pct', 'Sensors lost →', '%'], ['failsafe_after_polls', 'After missed polls', ''], ['quantize_pct', 'Round up to', '%']]],
+  ['GPU perf on demand', 'Locks clocks high while the GPUs are in use, back to auto after the idle time. Needs the writable sysfs mounts.', [
+    ['perf_control', 'Enabled', 'bool'], ['perf_idle_sec', 'Idle before auto', 's'], ['perf_busy_pct', 'Active: busy ≥', '%'], ['perf_power_w', 'or power ≥', 'W']]],
+  ['Polling', '', [['poll_sec', 'GPU sensors every', 's'], ['ilo_poll_sec', 'iLO fan readback every', 's']]],
+];
+function buildSettings() {
+  const root = $('settings'); root.innerHTML = '';
+  for (const [title, help, fields] of FIELDS) {
+    const box = document.createElement('div');
+    box.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${title}</div>`;
+    for (const [key, label, unit] of fields) {
+      if (unit === 'bool') {
+        const l = document.createElement('label'); l.className = 'switch';
+        l.innerHTML = `<input type="checkbox" data-k="${key}"> ${label}`;
+        box.appendChild(l);
+      } else {
+        const d = document.createElement('label'); d.className = 'field';
+        d.innerHTML = `<span>${label}</span><span class="unit" data-u="${unit}"><input type="number" step="any" data-k="${key}"></span>`;
+        box.appendChild(d);
+      }
+    }
+    if (help) box.insertAdjacentHTML('beforeend', `<p class="help">${help}</p>`);
+    root.appendChild(box);
+  }
+  root.addEventListener('change', e => {
+    const k = e.target.dataset.k; if (!k) return;
+    const v = e.target.type === 'checkbox' ? e.target.checked : (e.target.value === '' ? null : Number(e.target.value));
+    saveSettings({[k]: v});
+  });
+}
+function fillSettings() {
+  document.querySelectorAll('#settings [data-k]').forEach(el => {
+    if (el === document.activeElement) return;
+    const v = S[el.dataset.k];
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v;
+  });
+  $('pauseBtn').textContent = S.paused ? 'Resume' : 'Pause';
+  $('pauseBtn').className = S.paused ? 'primary' : '';
+}
+
+// ---------- status ----------
+const PHASES = {
+  starting: ['Starting', ''], ilo: ['iLO in control', 'good'], boost: ['Boosting', 'info'],
+  hold: ['Holding', 'info'], ramp: ['Stepping down', 'info'], failsafe: ['Failsafe: sensors lost', 'crit'], paused: ['Paused', 'warn'],
+};
+function tempClass(v, warnAt, critAt) { return v == null ? '' : v >= critAt ? 'crit' : v >= warnAt ? 'warn' : ''; }
+function renderStatus() {
+  const st = ST;
+  let [label, cls] = PHASES[st.phase] || [st.phase, ''];
+  if (st.phase === 'hold') label += ` · ${st.countdown_sec}s`;
+  if (st.phase === 'ramp' && st.countdown_sec) label += ` · next step ${st.countdown_sec}s`;
+  if (st.dry_run) label += ' (dry run, no iLO)';
+  $('phaseText').textContent = label; $('phaseDot').className = 'dot ' + cls;
+  const age = st.last_poll_ts ? Date.now() / 1000 - st.last_poll_ts : null;
+  $('ago').textContent = age == null ? '' : age > 10 ? `last poll ${Math.round(age)}s ago` : '';
+
+  $('floor').innerHTML = `${fmt(st.floor_pct)}<small>%</small>`;
+  $('floorSub').textContent = st.target_pct == null ? '' :
+    `Needed now: ${st.target_pct}% · ${st.reason}` + (st.floor_pct > st.target_pct ? ' (holding higher)' : '');
+
+  $('ctl').innerHTML = `${fmt(st.control_c, 1)}<small>°C</small>`;
+  $('ctlSub').textContent = st.control_card ? `${st.control_card} · ${st.control_source}` + (st.loaded_cards.length ? ` · under load: ${st.loaded_cards.join(', ')}` : '') : '';
+
+  const ilo = st.ilo || {};
+  if (ilo.fans && ilo.fans.length) {
+    $('fans').className = '';
+    $('fans').innerHTML = ilo.fans.map(f => `<div class="fanrow"><span>${esc(f.name)}</span><div class="bar"><i style="width:${clamp(f.pct || 0, 0, 100)}%;background:var(--s2)"></i></div><span class="v">${fmt(f.pct)}%</span></div>`).join('');
+  }
+  const bits = [];
+  if (ilo.floor_pct != null) bits.push(`iLO minimum ${ilo.floor_pct}%`);
+  if (ilo.ambient_c != null) bits.push(`ambient ${fmt(ilo.ambient_c)}°C`);
+  if (ilo.error) bits.push('read error: ' + ilo.error);
+  $('iloSub').textContent = bits.join(' · ');
+  $('errBox').textContent = st.last_error || '';
+
+  $('gpus').innerHTML = (st.gpus || []).map(g => {
+    const loaded = (st.loaded_cards || []).includes(g.card);
+    const t = (name, v, w, c, max) => `<div class="row"><span class="k">${name}</span><span>${fmt(v, 1)} °C</span></div><div class="bar t ${tempClass(v, w, c)}"><i style="width:${v == null ? 0 : clamp((v - 25) / (max - 25) * 100, 0, 100)}%"></i></div>`;
+    return `<div class="card"><div class="gpu-head"><b>${esc(g.card)}</b><span class="tag">${loaded ? 'under load' : 'idle'}${g.pci ? ' · ' + esc(g.pci) : ''}</span></div>
+      ${t('Junction', g.junction_c, 85, 98, 105)}${t('HBM', g.memory_c, 80, 90, 95)}${t('Edge', g.edge_c, 75, 88, 100)}
+      <div class="row"><span class="k">Power</span><span>${fmt(g.power_w)} W</span></div>
+      <div class="row"><span class="k">Busy</span><span>${fmt(g.busy_pct)} %</span></div>
+      <div class="row"><span class="k">Memory clock (now / top)</span><span>${fmt(g.mclk_mhz)} / ${fmt(g.mclk_top_mhz)} MHz</span></div></div>`;
+  }).join('') || '<div class="card muted">No GPU sensors read.</div>';
+
+  $('log').textContent = (st.recent_log || []).slice().reverse().join('\n');
+  const perf = st.perf_mode ? `GPU perf: ${st.perf_mode}` + (st.perf_mode === 'high' && S.perf_control ? ` (${st.perf_idle_remaining_sec}s to auto)` : '') : '';
+  const m = st.mclk || {};
+  $('mclk').textContent = [perf, `MCLK step: ${m.target ? m.target + ' MHz, ' : 'off, '}${m.status || ''}`].filter(Boolean).join(' · ');
+}
+
+// ---------- time-series charts (one y-axis each) ----------
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function timeChart(svg, tip, W0, H, series, yMin, yMax, yUnit, yTicks) {
+  const W = svg.clientWidth || W0; svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const padL = 34, padR = 12, padT = 8, padB = 22, pw = W - padL - padR, ph = H - padT - padB;
+  svg.innerHTML = '';
+  const now = Date.now() / 1000, t0 = now - 900;
+  const x = t => padL + (t - t0) / 900 * pw, y = v => padT + (1 - (clamp(v, yMin, yMax) - yMin) / (yMax - yMin)) * ph;
+  for (const v of yTicks) {
+    el('line', {x1: padL, x2: W - padR, y1: y(v), y2: y(v), stroke: 'var(--grid)'}, svg);
+    el('text', {x: padL - 6, y: y(v) + 4, 'text-anchor': 'end'}, svg).textContent = v + yUnit;
+  }
+  for (const m of [15, 10, 5, 0]) el('text', {x: x(now - m * 60), y: H - 6, 'text-anchor': m === 0 ? 'end' : m === 15 ? 'start' : 'middle'}, svg).textContent = m ? `-${m}m` : 'now';
+  const pts = hist.filter(h => h[0] >= t0);
+  for (const s of series) {
+    let d = '', pen = false;
+    for (const h of pts) { const v = h[s.i]; if (v == null) { pen = false; continue; } d += (pen ? 'L' : 'M') + x(h[0]).toFixed(1) + ',' + y(v).toFixed(1); pen = true; }
+    el('path', {d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'}, svg);
+  }
+  const hair = el('line', {y1: padT, y2: H - padB, stroke: 'var(--axis)', visibility: 'hidden'}, svg);
+  const dots = series.map(s => el('circle', {r: 4, fill: s.color, stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden'}, svg));
+  const hit = el('rect', {x: padL, y: padT, width: pw, height: ph, fill: 'transparent'}, svg);
+  const hide = () => { tip.style.display = 'none'; hair.setAttribute('visibility', 'hidden'); dots.forEach(d => d.setAttribute('visibility', 'hidden')); };
+  hit.addEventListener('pointerleave', hide);
+  hit.addEventListener('pointermove', e => {
+    if (!pts.length) return;
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width * W, t = t0 + (sx - padL) / pw * 900;
+    let best = pts[0]; for (const h of pts) if (Math.abs(h[0] - t) < Math.abs(best[0] - t)) best = h;
+    const bx = x(best[0]); hair.setAttribute('x1', bx); hair.setAttribute('x2', bx); hair.setAttribute('visibility', 'visible');
+    series.forEach((s, i) => { const v = best[s.i]; if (v == null) { dots[i].setAttribute('visibility', 'hidden'); return; }
+      dots[i].setAttribute('cx', bx); dots[i].setAttribute('cy', y(v)); dots[i].setAttribute('visibility', 'visible'); });
+    const ago = Math.round(now - best[0]);
+    tip.innerHTML = `<div class="muted">${ago < 60 ? ago + 's' : Math.floor(ago / 60) + 'm ' + (ago % 60) + 's'} ago</div>` +
+      series.map(s => `<div><span style="color:${s.color}">●</span> ${s.name}: <b>${best[s.i] == null ? '--' : best[s.i] + yUnit}</b></div>`).join('');
+    tip.style.display = 'block';
+    const px = bx / W * r.width;
+    tip.style.left = (px > r.width / 2 ? px - tip.offsetWidth - 10 : px + 10) + 'px'; tip.style.top = '4px';
+  });
+}
+function renderCharts() {
+  const temps = hist.map(h => h[1]).filter(v => v != null);
+  const lo = Math.floor((Math.min(...temps, 50) - 5) / 10) * 10, hi = Math.ceil((Math.max(...temps, 80) + 5) / 10) * 10;
+  const ticks = []; for (let v = lo; v <= hi; v += (hi - lo > 40 ? 20 : 10)) ticks.push(v);
+  timeChart($('tempChart'), $('tempTip'), 520, 170, [{i: 1, name: 'Control temp', color: 'var(--s1)'}], lo, hi, '°', ticks);
+  timeChart($('fanChart'), $('fanTip'), 520, 152,
+    [{i: 2, name: 'Minimum set', color: 'var(--s1)'}, {i: 3, name: 'iLO actual', color: 'var(--s2)'}], 0, 100, '%', [0, 25, 50, 75, 100]);
+}
+
+// ---------- curve editor ----------
+let CW = 720; const CH = 280, cpL = 40, cpR = 16, cpT = 26, cpB = 28, cph = CH - cpT - cpB;
+const cpwOf = () => CW - cpL - cpR;
+const cx = t => cpL + (clamp(t, T_MIN, T_MAX) - T_MIN) / (T_MAX - T_MIN) * cpwOf();
+const cy = p => cpT + (1 - clamp(p, 0, 100) / 100) * cph;
+function curveAt(c, t) {
+  if (t < c[0][0]) return 0;
+  for (let i = 0; i < c.length - 1; i++) if (t < c[i + 1][0]) return Math.round(c[i][1] + (t - c[i][0]) / (c[i + 1][0] - c[i][0]) * (c[i + 1][1] - c[i][1]));
+  return c[c.length - 1][1];
+}
+function renderCurve() {
+  if (!S) return;
+  const svg = $('curve'), c = S.thresholds; svg.innerHTML = '';
+  CW = svg.clientWidth || 720; svg.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
+  for (const p of [0, 25, 50, 75, 100]) { el('line', {x1: cpL, x2: CW - cpR, y1: cy(p), y2: cy(p), stroke: 'var(--grid)'}, svg); el('text', {x: cpL - 6, y: cy(p) + 4, 'text-anchor': 'end'}, svg).textContent = p + '%'; }
+  for (let t = 30; t <= 110; t += (CW < 500 ? 20 : 10)) el('text', {x: cx(t), y: CH - 8, 'text-anchor': 'middle'}, svg).textContent = t + '°';
+  if (S.load_floor_pct > 0) {
+    el('line', {x1: cpL, x2: CW - cpR, y1: cy(S.load_floor_pct), y2: cy(S.load_floor_pct), stroke: 'var(--s2)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4'}, svg);
+    el('text', {x: CW - cpR, y: cy(S.load_floor_pct) - 5, 'text-anchor': 'end'}, svg).textContent = `under load ≥ ${S.load_floor_pct}%`;
+  }
+  const d = `M${cpL},${cy(0)}L${cx(c[0][0])},${cy(0)}` + c.map(([t, p]) => `L${cx(t)},${cy(p)}`).join('') + `L${CW - cpR},${cy(c[c.length - 1][1])}`;
+  el('path', {d, fill: 'none', stroke: 'var(--s1)', 'stroke-width': 2.5, 'stroke-linejoin': 'round'}, svg);
+  // live operating point
+  if (ST && ST.control_c != null) {
+    const t = ST.control_c, p = curveAt(c, t);
+    el('line', {x1: cx(t), x2: cx(t), y1: cpT, y2: CH - cpB, stroke: 'var(--axis)', 'stroke-dasharray': '2 3'}, svg);
+    el('circle', {cx: cx(t), cy: cy(p), r: 6, fill: 'var(--text)', stroke: 'var(--surface)', 'stroke-width': 2}, svg);
+    el('text', {x: cx(t), y: cpT - 10, 'text-anchor': 'middle', style: 'fill:var(--text);font-weight:600'}, svg).textContent = `now ${t.toFixed(0)}° → ${p}%`;
+  }
+  c.forEach(([t, p], i) => {
+    const g = el('g', {style: 'cursor:grab'}, svg);
+    el('circle', {cx: cx(t), cy: cy(p), r: 16, fill: 'transparent'}, g);   // big hit target
+    el('circle', {cx: cx(t), cy: cy(p), r: dragging === i ? 8 : 6.5, fill: 'var(--s1)', stroke: 'var(--surface)', 'stroke-width': 2}, g);
+    if (dragging === i) el('text', {x: cx(t), y: cy(p) - 14, 'text-anchor': 'middle', style: 'fill:var(--text);font-weight:600'}, g).textContent = `${t}° ${p}%`;
+    g.addEventListener('pointerdown', e => { dragging = i; svg.setPointerCapture(e.pointerId); e.preventDefault(); renderCurve(); });
+  });
+  if (!document.activeElement || !$('curvePts').contains(document.activeElement)) fillCurveInputs();
+}
+function fillCurveInputs() {
+  const box = $('curvePts');
+  if (!box.children.length) {
+    box.innerHTML = S.thresholds.map((_, i) => `<div><label>Point ${i + 1}</label><div class="pair">
+      <span class="unit field" style="display:block;padding:0" data-u="°"><input type="number" step="1" data-i="${i}" data-j="0"></span>
+      <span class="unit field" style="display:block;padding:0" data-u="%"><input type="number" step="1" data-i="${i}" data-j="1"></span></div></div>`).join('');
+    box.addEventListener('change', e => {
+      const i = +e.target.dataset.i, j = +e.target.dataset.j; if (isNaN(i)) return;
+      const c = S.thresholds.map(p => p.slice()); c[i][j] = Number(e.target.value);
+      saveSettings({thresholds: c}, 'Curve saved');
+    });
+  }
+  box.querySelectorAll('input').forEach(inp => { inp.value = S.thresholds[+inp.dataset.i][+inp.dataset.j]; });
+}
+$('curve').addEventListener('pointermove', e => {
+  if (dragging === null) return;
+  const svg = $('curve'), r = svg.getBoundingClientRect();
+  const t = T_MIN + ((e.clientX - r.left) / r.width * CW - cpL) / cpwOf() * (T_MAX - T_MIN);
+  const p = (1 - ((e.clientY - r.top) / r.height * CH - cpT) / cph) * 100;
+  const c = S.thresholds, i = dragging;
+  const lo = i ? c[i - 1][0] + 1 : T_MIN, hi = i < c.length - 1 ? c[i + 1][0] - 1 : T_MAX;
+  const plo = i ? c[i - 1][1] : 0, phi = i < c.length - 1 ? c[i + 1][1] : 100;
+  c[i] = [Math.round(clamp(t, lo, hi)), Math.round(clamp(p, plo, phi))];
+  renderCurve();
+});
+const endDrag = () => { if (dragging === null) return; dragging = null; renderCurve(); saveSettings({thresholds: S.thresholds}, 'Curve saved'); };
+$('curve').addEventListener('pointerup', endDrag);
+$('curve').addEventListener('pointercancel', endDrag);
+$('resetCurve').addEventListener('click', () => saveSettings({thresholds: DEFAULT_CURVE}, 'Curve reset'));
+$('pauseBtn').addEventListener('click', () => saveSettings({paused: !S.paused}, S.paused ? 'Resumed' : 'Paused'));
+
+// ---------- polling ----------
+async function tick() {
+  try {
+    const j = await api('/api/state');
+    ST = j.state;
+    if (!S || dragging === null) S = j.settings;
+    const h = await api('/api/history?since=' + lastHistTs);
+    if (h.history.length) { hist.push(...h.history); lastHistTs = hist[hist.length - 1][0]; }
+    const cut = Date.now() / 1000 - 900; while (hist.length && hist[0][0] < cut) hist.shift();
+    fillSettings(); renderStatus(); renderCharts(); if (dragging === null) renderCurve();
+  } catch (e) {
+    $('phaseText').textContent = 'Dashboard lost connection'; $('phaseDot').className = 'dot crit';
+  }
+}
+buildSettings();
+tick(); setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

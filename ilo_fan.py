@@ -1,13 +1,13 @@
 """
-iLO Redfish fan control + rocm-smi temperature reading.
-Pulled out of the old monolithic fan_bridge.py so both the polling loop
-(loop.py) and the Flask UI (app.py) can share it.
+GPU sensor reading (sysfs, rocm-smi fallback), the fan curve, and the iLO
+Redfish fan-minimum controller.
 """
 
 import glob
 import json
 import os
 import subprocess
+import threading
 from dataclasses import dataclass
 
 import requests
@@ -17,7 +17,7 @@ ILO_HOST = os.environ.get("ILO_HOST", "")  # required: your iLO address
 ILO_VERIFY_SSL = os.environ.get("ILO_VERIFY_SSL", "false").lower() == "true"
 SECRETS_PATH = os.environ.get("ILO_SECRETS_PATH", "/run/secrets/ilo_creds.json")
 
-LOG_PREFIX = "[mi50-fan-bridge]"
+LOG_PREFIX = "[fan-bridge]"
 
 
 def log(msg: str) -> None:
@@ -186,28 +186,18 @@ def get_junction_temps() -> list:
 # Fan curve
 # ---------------------------------------------------------------------------
 
-def curve_pct_for_temp(temp_c: float, settings: dict) -> int:
-    """
-    Pure temp->fan% lookup along the ramp (interpolated between the
-    threshold points derived by config.derive_thresholds), independent of
-    any timer/hand-back state. Below the lowest point, returns 0 (meaning
-    "script has no opinion, iLO is in control"); above the highest point,
-    clamps to max_fan_pct.
-    """
-    thresholds = settings["thresholds"]  # sorted [temp_c, pct] pairs
-    if not thresholds:
-        return 0
-    if temp_c < thresholds[0][0]:
+def curve_pct_for_temp(temp_c: float, thresholds: list) -> int:
+    """temp -> fan % along the curve (linear between points). 0 below the
+    first point (no opinion, iLO in control); last point's % above the top."""
+    if not thresholds or temp_c < thresholds[0][0]:
         return 0
     if temp_c >= thresholds[-1][0]:
-        return thresholds[-1][1]
+        return int(thresholds[-1][1])
     for (t0, p0), (t1, p1) in zip(thresholds, thresholds[1:]):
         if t0 <= temp_c < t1:
-            if t1 == t0:
-                return p0
-            frac = (temp_c - t0) / (t1 - t0)
+            frac = (temp_c - t0) / (t1 - t0) if t1 > t0 else 0
             return round(p0 + frac * (p1 - p0))
-    return thresholds[-1][1]
+    return int(thresholds[-1][1])
 
 
 # ---------------------------------------------------------------------------
@@ -228,19 +218,12 @@ def load_creds(path: str = SECRETS_PATH) -> IloCreds:
 
 class IloFanController:
     """
-    Sets the GLOBAL minimum fan speed via HPE iLO Redfish -- confirmed
-    working against this hardware by capturing the exact PATCH the iLO
-    web UI's own "Fan Settings -> Minimum Fan Speed" dialog sends.
-
-    iLO 5 (tested on v3.14, ML350 Gen10) does NOT support per-fan
-    overrides -- the per-fan Thermal#Fans/N resources are read-only
-    (HotPluggable/Location/Redundant only, confirmed by direct
-    inspection). The only writable fan-speed control is this single
-    chassis-wide floor, which applies to ALL fans at once -- there is no
-    way to target just Fan 1 on this hardware. The "which fan(s) to
-    control" checkboxes in the UI are consequently a no-op on this
-    firmware; left in place in case a future firmware/box exposes
-    per-fan control, but effectively ignored right now.
+    iLO 5 has exactly one writable fan knob: the chassis-wide minimum fan
+    speed (what Administration -> Fan Settings -> Minimum Fan Speed sends).
+    It raises the floor of every fan at once; iLO's own thermal logic still
+    runs on top and can go higher. Per-fan entries under Thermal#Fans are
+    read-only on this firmware, so there is no way to target only the fans
+    in front of the GPUs.
     """
 
     THERMAL_PATH = "/redfish/v1/Chassis/1/Thermal"
@@ -253,63 +236,64 @@ class IloFanController:
         self.auth = HTTPBasicAuth(self.creds.username, self.creds.password)
         self.verify_ssl = verify_ssl
         self._session = requests.Session()
+        self._lock = threading.Lock()  # loop thread and iLO poller share the session
         if not verify_ssl:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    def _request(self, method: str, **kw):
+        """One retry on a fresh session: iLO drops idle keep-alive connections."""
+        with self._lock:
+            for attempt in (1, 2):
+                try:
+                    return self._session.request(
+                        method, self.base + self.THERMAL_PATH,
+                        auth=self.auth, verify=self.verify_ssl, timeout=10, **kw)
+                except requests.ConnectionError:
+                    self._session.close()
+                    self._session = requests.Session()
+                    if attempt == 2:
+                        raise
+
     def get_thermal(self) -> dict:
-        r = self._session.get(
-            self.base + self.THERMAL_PATH,
-            auth=self.auth, verify=self.verify_ssl, timeout=10,
-        )
+        r = self._request("GET")
         r.raise_for_status()
         return r.json()
 
-    @staticmethod
-    def _fan_number(odata_id: str) -> str:
-        return odata_id.rstrip("/").rsplit("/", 1)[-1]
-
-    def list_fans(self) -> list:
-        """Returns raw Fans[] entries from the Thermal resource (for the
-        dashboard's fan list / diagnostics -- read-only on this firmware)."""
-        try:
-            thermal = self.get_thermal()
-        except requests.RequestException as e:
-            log(f"ERROR fetching thermal data from iLO: {e}")
-            return []
-        return thermal.get("Fans", [])
-
-    def set_fan_floor_pct(self, pct: int, fan_ids=None) -> bool:
-        """
-        PATCHes the confirmed-working global minimum fan speed field.
-        fan_ids is accepted for API-compatibility with the rest of the
-        app but has NO EFFECT on this firmware -- there is no per-fan
-        write path, only this one global floor covering every fan.
-        """
-        body = {"Oem": {"Hpe": {"FanPercentMinimum": int(pct)}}}
-        r = None
-        for attempt in (1, 2):
-            try:
-                r = self._session.patch(
-                    self.base + self.THERMAL_PATH,
-                    json=body,
-                    auth=self.auth, verify=self.verify_ssl, timeout=10,
-                )
+    def read_status(self) -> dict:
+        """Actual fan speeds and the current minimum as iLO reports them.
+        {"fans": [{"name", "pct", "health"}], "floor_pct": int|None,
+         "ambient_c": float|None}"""
+        thermal = self.get_thermal()
+        fans = []
+        for f in thermal.get("Fans", []):
+            pct = f.get("Reading")
+            if pct is None:
+                pct = f.get("CurrentReading")  # older schema name
+            status = f.get("Status") or {}
+            if status.get("State") == "Absent":
+                continue
+            fans.append({
+                "name": f.get("Name") or f.get("FanName") or "Fan",
+                "pct": pct,
+                "health": status.get("Health"),
+            })
+        hpe = (thermal.get("Oem") or {}).get("Hpe") or {}
+        ambient = None
+        for t in thermal.get("Temperatures", []):
+            if "ambient" in (t.get("Name") or "").lower() and t.get("ReadingCelsius") is not None:
+                ambient = t["ReadingCelsius"]
                 break
-            except requests.ConnectionError as e:
-                # iLO drops idle keep-alive connections; retry once on a fresh session
-                self._session.close()
-                self._session = requests.Session()
-                if attempt == 2:
-                    log(f"ERROR patching global fan minimum: {e}")
-                    return False
-            except requests.RequestException as e:
-                log(f"ERROR patching global fan minimum: {e}")
-                return False
+        return {"fans": fans, "floor_pct": hpe.get("FanPercentMinimum"), "ambient_c": ambient}
 
+    def set_fan_floor_pct(self, pct: int) -> bool:
+        body = {"Oem": {"Hpe": {"FanPercentMinimum": int(pct)}}}
+        try:
+            r = self._request("PATCH", json=body)
+        except requests.RequestException as e:
+            log(f"ERROR setting fan minimum: {e}")
+            return False
         if r.status_code not in (200, 204):
             log(f"PATCH {self.THERMAL_PATH} -> {r.status_code}: {r.text[:200]}")
             return False
-
-        log(f"Global fan minimum set to {pct}%")
         return True

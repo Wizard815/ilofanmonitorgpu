@@ -14,6 +14,7 @@ RUN pip3 install --no-cache-dir --break-system-packages requests flask gunicorn 
 
 WORKDIR /app
 COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py /app/
+COPY static /app/static
 
 # Settings persist here -- mount this as a volume so edits survive restarts.
 RUN mkdir -p /data
