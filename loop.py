@@ -1,25 +1,23 @@
 """
-Background polling loop. Runs in a daemon thread started by app.py so the
-Flask process and the control loop share one container/process, with
-`state` as the hand-off point between them.
+Background control loop (daemon thread started by app.py) plus a slower
+thread that reads actual fan speeds back from iLO.
 
-Control model (four states):
-  - IDLE: below trigger, floor already at min_fan_pct, nothing to do.
-  - ACTIVE: hottest >= trigger. Script pushes the global fan minimum up
-    along the curve derived from (trigger temp, max_fan_pct).
-  - COOLDOWN: hottest dropped below trigger. Script keeps holding the
-    last-pushed floor for `cooldown_sec` -- a real timer, not a
-    temperature buffer. If hottest climbs back above trigger before this
-    elapses, the timer cancels and the script returns to ACTIVE.
-  - HELD: cooldown finished, but the floor is NOT yet reset -- it holds
-    at whatever it last was for a further `release_sec`, in case temp
-    climbs again shortly after. If it does, back to ACTIVE. Only once
-    release_sec elapses does the script actually PATCH the floor back
-    down to `min_fan_pct` (0 by default) -- otherwise the floor would
-    stay wherever it was pushed indefinitely, since iLO never lowers a
-    minimum on its own.
+Control model -- one curve, one floor:
+
+  control temp = hottest of (junction, HBM + mem_offset_c) across GPUs
+  target       = max(curve(control temp), load_floor if any GPU is loaded)
+                 rounded UP to quantize_pct, never below min_fan_pct
+
+  target above the floor  -> raise the floor at once
+  target below the floor  -> hold for hold_sec, then drop step_down_pct
+                             every step_down_sec until it meets the target
+  floor back at min       -> iLO is fully in charge again
+
+The floor is a *minimum*: iLO's own thermal logic still runs and can spin the
+fans higher. A floor below what iLO is already doing has no audible effect.
 """
 
+import collections
 import threading
 import time
 
@@ -28,296 +26,282 @@ import ilo_fan
 import mclk
 import perf
 
-# Shared, thread-safe-ish state for the UI to read. Simple dict + lock is
-# plenty here -- one writer (this loop), occasional readers (Flask requests).
+_lock = threading.Lock()
+_MAX_LOG_LINES = 200
+HISTORY_LEN = 900          # ~15 min at 1 s polling
+PUSH_RETRY_SEC = 5         # back off after a failed PATCH
+
 state = {
-    "current_floor_pct": None,     # None means "no active floor -- fully idle"
-    "phase": "idle",               # "idle" | "active" | "cooldown" | "held"
-    "script_in_control": False,    # true for active/cooldown/held -- only false when idle
-    "cooldown_remaining_sec": 0,   # seconds left in the COOLDOWN phase
-    "release_remaining_sec": 0,    # seconds left in the HELD phase
-    "last_temps": [],              # [{"card": ..., "temp_c": <hottest sensor, for display>, "fan_curve_c": <junction, for control>, ...}]
-    "last_poll_ts": None,
+    "last_poll_ts": None,      # healthcheck reads this
+    "gpus": [],
+    "control_c": None,
+    "control_card": None,
+    "control_source": None,    # "junction" or "HBM 70 + 11"
+    "target_pct": None,
+    "floor_pct": None,         # what we last successfully set on iLO (None = unknown)
+    "phase": "starting",       # starting|ilo|boost|hold|ramp|failsafe|paused
+    "countdown_sec": 0,        # hold: until first step down; ramp: until next step
+    "reason": "",
+    "loaded_cards": [],
+    "dry_run": False,          # no iLO creds: decisions are shown but not sent
+    "perf_mode": None,
+    "perf_idle_remaining_sec": 0,
+    "ilo": {"fans": [], "floor_pct": None, "ambient_c": None, "ts": None, "error": None},
     "last_error": None,
-    "recent_log": [],              # last N log lines, newest last
-    "perf_mode": None,             # "high" | "auto" | "off (always high)" | "unmanaged"
-    "perf_idle_remaining_sec": 0,  # seconds of idle left before dropping to auto
+    "recent_log": [],
 }
-_state_lock = threading.Lock()
-_MAX_LOG_LINES = 100
-STATUS_LOG_SEC = 30
+history = collections.deque(maxlen=HISTORY_LEN)   # [ts, control_c, floor_pct, ilo_fan_avg]
+_ilo_wake = threading.Event()
 
 
-def _record_log(msg: str) -> None:
+def _log(msg: str) -> None:
     ilo_fan.log(msg)
-    with _state_lock:
-        state["recent_log"].append(msg)
-        if len(state["recent_log"]) > _MAX_LOG_LINES:
-            state["recent_log"] = state["recent_log"][-_MAX_LOG_LINES:]
+    line = time.strftime("%H:%M:%S ") + msg
+    with _lock:
+        state["recent_log"].append(line)
+        del state["recent_log"][:-_MAX_LOG_LINES]
+
+
+def _set(**kw) -> None:
+    with _lock:
+        state.update(kw)
 
 
 def get_state_snapshot() -> dict:
-    with _state_lock:
-        snap = {**state, "recent_log": list(state["recent_log"])}
+    with _lock:
+        snap = dict(state)
+        snap["recent_log"] = list(state["recent_log"])
+        snap["ilo"] = dict(state["ilo"])
     snap["mclk"] = mclk.snapshot()
     return snap
 
 
-def run_forever() -> None:
-    settings = config.load()
-    _record_log(f"Loop starting. Settings loaded from {config.SETTINGS_PATH}")
+def get_history(since: float = 0) -> list:
+    with _lock:
+        return [h for h in history if h[0] > since]
 
-    ilo = None
+
+# ---------------------------------------------------------------------------
+# Pure decision logic (no I/O, unit-tested in tests/test_controller.py)
+# ---------------------------------------------------------------------------
+
+def control_temp(gpus: list, mem_offset):
+    """(temp, card, source) the curve runs on: the hottest of junction (or
+    edge) and HBM + mem_offset across all GPUs. (None, None, None) if nothing
+    is readable."""
+    best = (None, None, None)
+    for g in gpus:
+        cands = [(g.get("fan_curve_c"), g.get("fan_curve_kind") or "junction")]
+        if g.get("memory_c") is not None and mem_offset is not None:
+            cands.append((g["memory_c"] + mem_offset, f"HBM {g['memory_c']:.0f} + {mem_offset:g}"))
+        for v, src in cands:
+            if v is not None and (best[0] is None or v > best[0]):
+                best = (v, g.get("card"), src)
+    return best
+
+
+def loaded_cards(gpus: list, s: dict) -> list:
+    return [g["card"] for g in gpus
+            if (g.get("power_w") is not None and g["power_w"] >= s["load_power_w"])
+            or (g.get("busy_pct") is not None and g["busy_pct"] >= s["load_busy_pct"])]
+
+
+def compute_target(temp_c, loaded: list, s: dict):
+    """(target %, reason)."""
+    curve = ilo_fan.curve_pct_for_temp(temp_c, s["thresholds"]) if temp_c is not None else 0
+    load = s["load_floor_pct"] if loaded else 0
+    raw = max(curve, load)
+    q = max(1, s["quantize_pct"])
+    target = min(100, -(-raw // q) * q) if raw > 0 else 0   # round up
+    target = max(target, s["min_fan_pct"])
+    if raw == 0:
+        reason = "below curve"
+    elif load >= curve:
+        reason = f"load on {', '.join(loaded)}"
+    else:
+        reason = f"curve at {temp_c:.0f}°C"
+    return target, reason
+
+
+class FloorController:
+    """Fast up, hold, then step down. `floor` is the value iLO actually has
+    (only changed through commit() after a successful PATCH)."""
+
+    def __init__(self):
+        self.floor = None
+        self.needed_ts = None      # last time the target was >= floor
+        self.last_step_ts = None
+
+    def commit(self, pct: int, now: float) -> None:
+        self.floor = pct
+
+    def adopt(self, pct: int, now: float) -> None:
+        """Take over a floor found on iLO at start-up: hold it, then ramp."""
+        self.floor = pct
+        self.needed_ts = now
+        self.last_step_ts = None
+
+    def decide(self, target: int, now: float, s: dict):
+        """Returns (desired floor, phase, countdown_sec)."""
+        if self.floor is None or target >= self.floor:
+            self.needed_ts = now
+            self.last_step_ts = None
+            phase = "ilo" if target <= s["min_fan_pct"] else "boost"
+            return target, phase, 0
+
+        held = now - (now if self.needed_ts is None else self.needed_ts)
+        if held < s["hold_sec"]:
+            return self.floor, "hold", round(s["hold_sec"] - held)
+
+        if self.last_step_ts is None or now - self.last_step_ts >= s["step_down_sec"]:
+            self.last_step_ts = now
+            desired = max(target, self.floor - s["step_down_pct"])
+            return desired, "ramp", round(s["step_down_sec"]) if desired > target else 0
+        return self.floor, "ramp", round(s["step_down_sec"] - (now - self.last_step_ts))
+
+
+# ---------------------------------------------------------------------------
+# Threads
+# ---------------------------------------------------------------------------
+
+def _make_ilo():
     try:
-        ilo = ilo_fan.IloFanController()
-    except (FileNotFoundError, KeyError) as e:
-        _record_log(f"FATAL: could not load iLO creds: {e}. "
-                     f"UI will still run but fan control is disabled until this is fixed.")
+        return ilo_fan.IloFanController()
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        _log(f"No iLO connection ({e}). Running in dry-run: decisions are shown, nothing is sent.")
+        return None
 
-    # Start in HELD: iLO may still hold a floor from before a restart/crash, so a
-    # cool start releases it after release_sec; a hot start goes ACTIVE at once.
-    phase = "held"               # "idle" | "active" | "cooldown" | "held"
-    current_floor = None         # last floor % we pushed, while active/cooldown/held (None = unknown)
-    below_trigger_since = None   # timestamp when hottest first dropped below trigger (cooldown start)
-    cooldown_done_since = time.time()  # timestamp when cooldown finished (held phase start)
-    step_down_since = None       # timestamp when the target first fell below the current floor
-    last_status_log = 0.0        # 1 s polling: only log unchanged status every STATUS_LOG_SEC
+
+def run_forever(ilo) -> None:
+    ctl = FloorController()
     perf_ctl = perf.PerfController()
-    no_temps_count = 0           # consecutive polls with no sensor data
+    no_temps = 0
+    last_phase = None
+    retry_after = 0.0
+    _set(dry_run=ilo is None)
+
+    # Adopt whatever floor iLO already has (e.g. left by a restart), then hold/ramp it down normally.
+    if ilo is not None:
+        try:
+            found = ilo.read_status().get("floor_pct")
+            if found is not None:
+                ctl.adopt(int(found), time.time())
+                _log(f"iLO fan minimum is currently {found}%.")
+        except Exception as e:
+            _log(f"Could not read the current iLO fan minimum ({e}); will set it on the first cycle.")
 
     while True:
-        settings = config.load()  # re-read every cycle so UI edits apply live
-        trigger_c = settings["target_max_c"]
-        cooldown_sec = settings["cooldown_sec"]
-        release_sec = settings.get("release_sec", 120)
-        min_fan_pct = settings.get("min_fan_pct", 0)
-        # Fast polling any time the script is actively holding a floor
-        # (active/cooldown/held), since temp could climb again any
-        # moment; slow polling only once fully idle.
-        interval = settings["idle_poll_sec"] if phase == "idle" else settings["active_poll_sec"]
-
-        if settings.get("paused"):
-            _record_log("Paused via UI, skipping this cycle.")
-            perf_ctl.release()  # paused: back to always-high
-            time.sleep(interval)
-            continue
-
-        temps = ilo_fan.get_gpu_sensors()
+        s = config.load()
         now = time.time()
 
-        with _state_lock:
-            state["last_temps"] = temps
-            state["last_poll_ts"] = now
-
-        if not temps:
-            no_temps_count += 1
-            _record_log(f"No GPU temps read this cycle ({no_temps_count}x in a row).")
-            with _state_lock:
-                state["last_error"] = "No GPU temps read (sysfs and rocm-smi returned nothing)"
-            # Blind (e.g. after a GPU reset): go to the failsafe floor, never sit at a low one.
-            failsafe = settings.get("failsafe_fan_pct", 60)
-            if no_temps_count >= settings.get("failsafe_after_polls", 5) and ilo is not None \
-                    and (current_floor is None or current_floor < failsafe):
-                if ilo.set_fan_floor_pct(failsafe):
-                    _record_log(f"Sensors lost -> failsafe fan floor {failsafe}%.")
-                    current_floor = failsafe
-                    phase = "active"
-            time.sleep(interval)
-            continue
-        no_temps_count = 0
-
-        with _state_lock:
-            state["last_error"] = None
-
-        # Perf level on demand. Never let it break the fan loop.
-        try:
-            perf_state = perf_ctl.update(temps, settings, now, _record_log)
-        except Exception as e:
-            _record_log(f"Perf control error: {e} -> back to high.")
-            try:
+        if s["paused"]:
+            if last_phase != "paused":
+                _log("Paused. The fan minimum is left where it is.")
                 perf_ctl.release()
-            except Exception:
-                pass
-            perf_state = {"perf_mode": "error (high)", "perf_idle_remaining_sec": 0}
-        with _state_lock:
-            state.update(perf_state)
-
-        # Fan-curve decision uses each card's junction (fan_curve_c), NOT
-        # the display-only "hottest spot across all sensors" temp_c --
-        # junction is the throttle-relevant figure. Falls back to edge
-        # per-card if junction wasn't reported for that card.
-        # Control temp per card: junction, or HBM + mem_offset_c if that is
-        # closer to its limit (HBM crit is 94 C vs 105 C junction).
-        mem_offset = settings.get("mem_offset_c", 11)
-        def _control_c(t):
-            vals = [v for v in (t.get("fan_curve_c"),) if v is not None]
-            if t.get("memory_c") is not None and mem_offset is not None:
-                vals.append(t["memory_c"] + mem_offset)
-            return max(vals) if vals else None
-        ctl = [c for c in (_control_c(t) for t in temps) if c is not None]
-        if not ctl:
-            time.sleep(interval)
+            last_phase = "paused"
+            _set(phase="paused", countdown_sec=0, last_poll_ts=now)
+            time.sleep(s["poll_sec"])
             continue
-        hottest = max(ctl)
 
-        # Load trigger: power/busy rise ~1 s before junction does.
-        load_floor = settings.get("load_floor_pct", 0)
-        loaded = [t for t in temps
-                  if (t.get("power_w") is not None and t["power_w"] >= settings.get("load_power_w", 1e9))
-                  or (t.get("busy_pct") is not None and t["busy_pct"] >= settings.get("load_busy_pct", 1e9))]
-        under_load = bool(loaded) and load_floor > 0
+        gpus = ilo_fan.get_gpu_sensors()
+        temp, card, source = control_temp(gpus, s["mem_offset_c"])
 
-        if hottest >= trigger_c or under_load:
-            # Over trigger or under load: (re-)enter ACTIVE regardless of
-            # what phase we were in -- cancels any cooldown/held timer.
-            below_trigger_since = None
-            cooldown_done_since = None
-            target = ilo_fan.curve_pct_for_temp(hottest, settings)
-            if under_load:
-                target = max(target, load_floor)
-            why = f"Hottest={hottest:.1f}C" + (f", load on {','.join(t['card'] for t in loaded)}" if under_load else "")
-
-            if phase != "active":
-                _record_log(f"{why} -> script taking over global fan floor.")
-                step_down_since = None
-
-            # Fast up, slow down: raise at once; lower only after the lower
-            # target held for step_down_sec, by at most step_down_pct.
-            new_floor = current_floor
-            if current_floor is None or target > current_floor:
-                new_floor = target
-                step_down_since = None
-            elif target < current_floor:
-                if step_down_since is None:
-                    step_down_since = now
-                elif now - step_down_since >= settings.get("step_down_sec", 0):
-                    new_floor = max(target, current_floor - settings.get("step_down_pct", 100))
-                    step_down_since = now
-            else:
-                step_down_since = None
-
-            if new_floor != current_floor:
-                _record_log(f"{why} -> pushing fan floor to {new_floor}%")
-                if ilo is None:
-                    _record_log("Cannot push to iLO: controller not initialized (check creds).")
-                else:
-                    if ilo.set_fan_floor_pct(new_floor):
-                        current_floor = new_floor
-                        phase = "active"
-                    else:
-                        _record_log("Fan floor push FAILED, will retry next cycle.")
-            else:
-                phase = "active"
-                if now - last_status_log >= STATUS_LOG_SEC:
-                    _record_log(f"{why}, holding fan floor at {current_floor}%")
-                    last_status_log = now
-
-            with _state_lock:
-                state["current_floor_pct"] = current_floor
-                state["phase"] = "active"
-                state["script_in_control"] = True
-                state["cooldown_remaining_sec"] = 0
-                state["release_remaining_sec"] = 0
-
+        if temp is None:
+            no_temps += 1
+            err = "No GPU sensors readable (sysfs and rocm-smi returned nothing)."
+            if no_temps == 1:
+                _log(err)
+            if no_temps < s["failsafe_after_polls"]:
+                _set(gpus=gpus, last_poll_ts=now, last_error=err)
+                time.sleep(s["poll_sec"])
+                continue
+            target, reason, loaded = s["failsafe_fan_pct"], "sensors lost", []
         else:
-            # Under trigger.
-            if phase == "idle":
-                if now - last_status_log >= STATUS_LOG_SEC:
-                    _record_log(f"Hottest={hottest:.1f}C, below trigger, iLO in control.")
-                    last_status_log = now
-                with _state_lock:
-                    state["current_floor_pct"] = None
-                    state["phase"] = "idle"
-                    state["script_in_control"] = False
-                    state["cooldown_remaining_sec"] = 0
-                    state["release_remaining_sec"] = 0
+            if no_temps >= s["failsafe_after_polls"]:
+                _log("GPU sensors back.")
+            no_temps = 0
+            try:
+                perf_state = perf_ctl.update(gpus, s, now, _log)
+            except Exception as e:
+                _log(f"Perf control error: {e} -> back to high.")
+                try:
+                    perf_ctl.release()
+                except Exception:
+                    pass
+                perf_state = {"perf_mode": "error (high)", "perf_idle_remaining_sec": 0}
+            _set(**perf_state)
+            loaded = loaded_cards(gpus, s) if s["load_floor_pct"] > 0 else []
+            target, reason = compute_target(temp, loaded, s)
 
-            elif phase == "active":
-                # Just dropped below trigger -- start the cooldown timer.
-                phase = "cooldown"
-                below_trigger_since = now
-                _record_log(f"Hottest={hottest:.1f}C dropped below trigger {trigger_c}C -- "
-                            f"starting {cooldown_sec}s cooldown, holding floor at {current_floor}%.")
-                with _state_lock:
-                    state["current_floor_pct"] = current_floor
-                    state["phase"] = "cooldown"
-                    state["script_in_control"] = True
-                    state["cooldown_remaining_sec"] = cooldown_sec
-                    state["release_remaining_sec"] = 0
+        desired, phase, countdown = ctl.decide(target, now, s)
+        if no_temps >= s["failsafe_after_polls"]:
+            phase = "failsafe"
 
-            elif phase == "cooldown":
-                elapsed = now - below_trigger_since
-                remaining = max(0, cooldown_sec - elapsed)
-                with _state_lock:
-                    state["cooldown_remaining_sec"] = round(remaining)
+        if desired != ctl.floor and now >= retry_after:
+            old = ctl.floor
+            ok = True if ilo is None else ilo.set_fan_floor_pct(desired)
+            if ok:
+                ctl.commit(desired, now)
+                arrow = "↑" if old is None or desired > old else "↓"
+                _log(f"Fan minimum {arrow} {desired}%  ({reason}"
+                     + (f", {temp:.1f}°C" if temp is not None and "curve" not in reason else "") + ")")
+                _ilo_wake.set()
+            else:
+                retry_after = now + PUSH_RETRY_SEC
+                _log(f"Setting fan minimum to {desired}% failed; retrying in {PUSH_RETRY_SEC}s.")
 
-                if remaining <= 0:
-                    phase = "held"
-                    cooldown_done_since = now
-                    _record_log(f"Cooldown complete -- holding floor at {current_floor}% for a further "
-                                f"{release_sec}s before resetting to {min_fan_pct}%.")
-                    with _state_lock:
-                        state["phase"] = "held"
-                        state["release_remaining_sec"] = release_sec
-                else:
-                    if now - last_status_log >= STATUS_LOG_SEC:
-                        _record_log(f"Hottest={hottest:.1f}C, cooling down ({round(remaining)}s left, "
-                                    f"holding fan floor at {current_floor if current_floor is not None else 'unknown '}%)")
-                        last_status_log = now
-                    with _state_lock:
-                        state["current_floor_pct"] = current_floor
-                        state["script_in_control"] = True
+        if phase != last_phase and phase in ("hold", "ilo") and last_phase not in (None, "starting"):
+            _log(f"Need dropped to {target}%: holding {ctl.floor}% for {s['hold_sec']:.0f}s, then stepping down."
+                 if phase == "hold" else "Back to iLO control.")
+        last_phase = phase
 
-            elif phase == "held":
-                elapsed = now - cooldown_done_since
-                remaining = max(0, release_sec - elapsed)
-                with _state_lock:
-                    state["release_remaining_sec"] = round(remaining)
-
-                if remaining <= 0:
-                    _record_log(f"Release timer complete -- resetting fan floor to {min_fan_pct}% "
-                                f"and handing control back to iLO.")
-                    if ilo is not None:
-                        if not ilo.set_fan_floor_pct(min_fan_pct):
-                            _record_log("Release floor reset FAILED -- iLO may still be holding "
-                                        "the last active floor. Will not retry automatically; "
-                                        "check connectivity/creds.")
-                    phase = "idle"
-                    current_floor = None
-                    below_trigger_since = None
-                    cooldown_done_since = None
-                    with _state_lock:
-                        state["current_floor_pct"] = None
-                        state["phase"] = "idle"
-                        state["script_in_control"] = False
-                        state["cooldown_remaining_sec"] = 0
-                        state["release_remaining_sec"] = 0
-                else:
-                    if now - last_status_log >= STATUS_LOG_SEC:
-                        _record_log(f"Hottest={hottest:.1f}C, held ({round(remaining)}s to release, "
-                                    f"holding fan floor at {current_floor if current_floor is not None else 'unknown '}%)")
-                        last_status_log = now
-                    with _state_lock:
-                        state["current_floor_pct"] = current_floor
-                        state["script_in_control"] = True
-
-        time.sleep(interval)
+        with _lock:
+            ilo_fans = [f["pct"] for f in state["ilo"]["fans"] if f.get("pct") is not None]
+            history.append([round(now, 1),
+                            round(temp, 1) if temp is not None else None,
+                            ctl.floor,
+                            round(sum(ilo_fans) / len(ilo_fans)) if ilo_fans else None])
+            state.update(
+                gpus=gpus, control_c=temp, control_card=card, control_source=source, target_pct=target,
+                floor_pct=ctl.floor, phase=phase, countdown_sec=countdown, reason=reason,
+                loaded_cards=loaded, last_poll_ts=now,
+                last_error=None if temp is not None else state["last_error"],
+            )
+        time.sleep(s["poll_sec"])
 
 
-def _supervise() -> None:
-    # A crash must never leave the fans unmanaged: log it and restart the loop.
+def _ilo_poller(ilo) -> None:
+    """Reads actual fan speeds from iLO. Woken early right after a PATCH."""
     while True:
         try:
-            run_forever()
+            st = ilo.read_status()
+            with _lock:
+                state["ilo"] = {**st, "ts": time.time(), "error": None}
         except Exception as e:
-            _record_log(f"Loop crashed: {e!r} -- restarting in 2 s.")
-            with _state_lock:
-                state["last_error"] = f"Loop crashed: {e!r}"
+            with _lock:
+                state["ilo"] = {**state["ilo"], "error": str(e)[:200]}
+        _ilo_wake.wait(config.load()["ilo_poll_sec"])
+        if _ilo_wake.is_set():
+            _ilo_wake.clear()
+            time.sleep(2)  # give the fans a moment to spin up before reading
+
+
+def _supervise(target, *args) -> None:
+    # A crash must never leave the fans unmanaged: log it and restart.
+    while True:
+        try:
+            target(*args)
+        except Exception as e:
+            _log(f"{target.__name__} crashed: {e!r}; restarting in 2 s.")
+            _set(last_error=f"{target.__name__} crashed: {e!r}")
             time.sleep(2)
 
 
 def start_background_thread() -> threading.Thread:
-    t = threading.Thread(target=_supervise, daemon=True, name="fan-poll-loop")
+    ilo = _make_ilo()
+    t = threading.Thread(target=_supervise, args=(run_forever, ilo), daemon=True, name="fan-loop")
     t.start()
-    mclk.start_thread(_record_log)  # own thread: the fan loop never waits on it
+    if ilo is not None:
+        threading.Thread(target=_supervise, args=(_ilo_poller, ilo), daemon=True, name="ilo-poller").start()
+    mclk.start_thread(_log)
     return t
