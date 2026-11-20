@@ -27,8 +27,32 @@ CURVE_POINTS = 6
 # speed (usually 15-25% on an ML350 Gen10).
 DEFAULT_CURVE = [[60, 15], [70, 25], [78, 35], [84, 50], [90, 70], [96, 100]]
 
+# A preset is a named fan profile: these keys, applied together.
+PRESET_KEYS = ("thresholds", "load_floor_pct", "predict_sec", "hold_sec", "step_down_pct", "step_down_sec")
+
+# Built-ins (always available, can't be overwritten or deleted).
+BUILTIN_PRESETS = {
+    "Quiet": {
+        "thresholds": [[66, 15], [75, 22], [82, 30], [88, 45], [93, 65], [98, 100]],
+        "load_floor_pct": 30, "predict_sec": 2, "hold_sec": 30, "step_down_pct": 5, "step_down_sec": 10,
+    },
+    "Balanced": {
+        "thresholds": DEFAULT_CURVE,
+        "load_floor_pct": 40, "predict_sec": 3, "hold_sec": 60, "step_down_pct": 5, "step_down_sec": 15,
+    },
+    "Performance": {
+        "thresholds": [[55, 20], [65, 30], [72, 40], [80, 55], [87, 75], [93, 100]],
+        "load_floor_pct": 50, "predict_sec": 4, "hold_sec": 90, "step_down_pct": 5, "step_down_sec": 20,
+    },
+    "Max cooling": {
+        "thresholds": [[45, 40], [55, 50], [65, 60], [75, 75], [83, 90], [88, 100]],
+        "load_floor_pct": 70, "predict_sec": 5, "hold_sec": 180, "step_down_pct": 5, "step_down_sec": 30,
+    },
+}
+
 DEFAULTS = {
     "thresholds": DEFAULT_CURVE,
+    "predict_sec": 3,            # look ahead along a rising temperature this many seconds (0 = off)
 
     # Load trigger: power/busy jump the moment work starts, about a second
     # before junction spikes 20+ C. 0 floor = off.
@@ -43,11 +67,15 @@ DEFAULTS = {
     "step_down_sec": 15,
     "step_down_pct": 5,
     "min_fan_pct": 0,
+    # What iLO runs the fans at on its own. 0 = learn it from the readback.
+    # A minimum at or below this changes nothing, so control is handed back
+    # as soon as stepping down would go below it.
+    "ilo_baseline_pct": 0,
     # Round the target UP to this many %, so the floor isn't re-PATCHed for
     # every 1% wiggle (iLO PATCHes take ~0.5-2 s each).
     "quantize_pct": 5,
 
-    "poll_sec": 1,
+    "poll_sec": 0.5,             # sysfs reads take ~1 ms, so this is cheap
     "ilo_poll_sec": 5,           # how often to read actual fan speeds back from iLO
 
     # HBM limit is ~94 C vs ~105 C junction, so HBM counts as this much hotter.
@@ -63,6 +91,7 @@ DEFAULTS = {
     "perf_power_w": 80,
 
     "paused": False,
+    "presets": {},               # user presets: name -> {PRESET_KEYS}
 }
 
 # key -> (type, min, max). None bounds = unbounded.
@@ -75,7 +104,9 @@ SCHEMA = {
     "step_down_pct": (int, 1, 100),
     "min_fan_pct": (int, 0, 100),
     "quantize_pct": (int, 1, 25),
-    "poll_sec": (float, 0.5, 30),
+    "poll_sec": (float, 0.2, 30),
+    "predict_sec": (float, 0, 15),
+    "ilo_baseline_pct": (int, 0, 100),
     "ilo_poll_sec": (float, 2, 120),
     "mem_offset_c": (float, 0, 40),     # also accepts None
     "failsafe_fan_pct": (int, 20, 100),
@@ -139,12 +170,38 @@ def _normalize(data: dict) -> dict:
                 out[k] = clean_curve(v)
             except (ValueError, TypeError, IndexError):
                 pass  # old 7-point curve or garbage -> default curve
+        elif k == "presets" and isinstance(v, dict):
+            out[k] = {}
+            for name, p in v.items():
+                try:
+                    out[k][str(name)[:40]] = _clean_preset(p)
+                except (ValueError, TypeError, IndexError, KeyError, AttributeError):
+                    pass
         elif k in SCHEMA:
             try:
                 out[k] = _coerce(k, v)
             except (ValueError, TypeError):
                 pass
     return out
+
+
+def _clean_preset(p: dict) -> dict:
+    out = {"thresholds": clean_curve(p["thresholds"])}
+    for k in PRESET_KEYS[1:]:
+        out[k] = _coerce(k, p.get(k, DEFAULTS[k]))
+    return out
+
+
+def all_presets(settings: dict) -> dict:
+    return {**BUILTIN_PRESETS, **settings.get("presets", {})}
+
+
+def active_preset(settings: dict):
+    """Name of the preset the current settings match, or None (custom)."""
+    for name, p in all_presets(settings).items():
+        if all(settings.get(k) == p[k] for k in PRESET_KEYS):
+            return name
+    return None
 
 
 def _write(data: dict) -> None:
@@ -194,5 +251,42 @@ def save(partial: dict) -> dict:
                 current[k] = clean_curve(v)
             elif k in SCHEMA:
                 current[k] = _coerce(k, v)
+        _write(current)
+        return copy.deepcopy(current)
+
+
+def apply_preset(name: str) -> dict:
+    with _lock:
+        current = copy.deepcopy(_load_locked())
+        p = all_presets(current).get(name)
+        if p is None:
+            raise ValueError(f"no preset named {name!r}")
+        current.update(copy.deepcopy(p))
+        _write(current)
+        return copy.deepcopy(current)
+
+
+def save_preset(name: str) -> dict:
+    """Save the current curve and timing as a named preset (overwrites a user preset of that name)."""
+    name = (name or "").strip()[:40]
+    if not name:
+        raise ValueError("preset needs a name")
+    if name in BUILTIN_PRESETS:
+        raise ValueError(f"{name!r} is a built-in preset; pick another name")
+    with _lock:
+        current = copy.deepcopy(_load_locked())
+        current["presets"] = {**current.get("presets", {}), name: {k: copy.deepcopy(current[k]) for k in PRESET_KEYS}}
+        _write(current)
+        return copy.deepcopy(current)
+
+
+def delete_preset(name: str) -> dict:
+    if name in BUILTIN_PRESETS:
+        raise ValueError("built-in presets can't be deleted")
+    with _lock:
+        current = copy.deepcopy(_load_locked())
+        if name not in current.get("presets", {}):
+            raise ValueError(f"no preset named {name!r}")
+        current["presets"] = {k: v for k, v in current["presets"].items() if k != name}
         _write(current)
         return copy.deepcopy(current)
