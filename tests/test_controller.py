@@ -28,19 +28,19 @@ def test_control_temp_uses_hbm_offset():
 
 def test_fast_up_hold_then_ramp():
     c = loop.FloorController()
-    d, ph, _ = c.decide(40, 0, S); assert (d, ph) == (40, "boost"); c.commit(d, 0)
-    d, ph, _ = c.decide(60, 1, S); assert d == 60; c.commit(d, 1)
+    d, ph, _ = c.decide(40, 0, S); assert (d, ph) == (40, "boost"); c.commit(d)
+    d, ph, _ = c.decide(60, 1, S); assert d == 60; c.commit(d)
     d, ph, cd = c.decide(0, 2, S); assert (d, ph, cd) == (60, "hold", 59)
-    d, ph, _ = c.decide(0, 61, S); assert (d, ph) == (55, "ramp"); c.commit(d, 61)
+    d, ph, _ = c.decide(0, 61, S); assert (d, ph) == (55, "ramp"); c.commit(d)
     d, ph, _ = c.decide(0, 70, S); assert d == 55            # waits step_down_sec
-    d, ph, _ = c.decide(0, 76, S); assert d == 50; c.commit(d, 76)
+    d, ph, _ = c.decide(0, 76, S); assert d == 50; c.commit(d)
     d, ph, _ = c.decide(70, 77, S); assert (d, ph) == (70, "boost")   # load returns: straight back up
 
 
 def test_ramp_reaches_idle():
     c = loop.FloorController(); c.adopt(10, 0)
-    d, ph, _ = c.decide(0, 61, S); assert d == 5; c.commit(d, 61)
-    d, ph, _ = c.decide(0, 76, S); assert d == 0; c.commit(d, 76)
+    d, ph, _ = c.decide(0, 61, S); assert d == 5; c.commit(d)
+    d, ph, _ = c.decide(0, 76, S); assert d == 0; c.commit(d)
     d, ph, _ = c.decide(0, 77, S); assert (d, ph) == (0, "ilo")
 
 
@@ -59,3 +59,47 @@ def test_old_settings_migrate():
     config._cache["mtime"] = None
     s = config.load()
     assert "target_max_c" not in s and s["load_floor_pct"] == 45 and s["thresholds"] == config.DEFAULT_CURVE
+
+
+def test_hold_paused_while_rising():
+    c = loop.FloorController(); c.adopt(60, 0)
+    assert c.decide(40, 100, S, rising=True)[1] == "hold"      # 100 s later, but still heating
+    d, ph, cd = c.decide(40, 101, S); assert (ph, cd) == ("hold", 59)
+
+
+def test_handoff_jumps_once_below_baseline():
+    c = loop.FloorController(); c.adopt(35, 0)
+    d, ph, _ = c.decide(0, 61, S, baseline=20); assert d == 30; c.commit(d)
+    d, ph, _ = c.decide(0, 76, S, baseline=20); assert d == 25; c.commit(d)
+    d, ph, _ = c.decide(0, 91, S, baseline=20); assert d == 0; c.commit(d)   # 20 would change nothing
+    assert c.decide(0, 92, S, baseline=20) == (0, "ilo", 0)
+
+
+def test_no_takeover_below_baseline():
+    c = loop.FloorController(); c.commit(0)
+    assert c.decide(15, 0, S, baseline=20) == (0, "ilo", 0)    # iLO already runs 20%
+    d, ph, _ = c.decide(30, 1, S, baseline=20); assert (d, ph) == (30, "boost") and c.rise_ts == 1
+
+
+def test_trend_and_predict():
+    tr = loop.Trend()
+    for i in range(9):
+        rate = tr.add(i * 0.5, 60 + i)                          # 2 C/s
+    assert abs(rate - 2) < 1e-6
+    assert loop.predict(70, rate, {**S, "predict_sec": 3}) == 76
+    assert loop.predict(70, -1, {**S, "predict_sec": 3}) == 70
+
+
+def test_presets_roundtrip():
+    s = config.apply_preset("Quiet")
+    assert config.active_preset(s) == "Quiet"
+    s = config.save({"load_floor_pct": 33})
+    assert config.active_preset(s) is None
+    s = config.save_preset("Mine")
+    assert config.active_preset(s) == "Mine"
+    try:
+        config.save_preset("Quiet"); assert False
+    except ValueError:
+        pass
+    s = config.delete_preset("Mine")
+    assert "Mine" not in s["presets"]

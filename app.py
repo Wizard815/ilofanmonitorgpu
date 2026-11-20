@@ -29,9 +29,15 @@ def dashboard():
     return resp
 
 
+def _settings_payload(s: dict) -> dict:
+    return {**s, "active_preset": config.active_preset(s),
+            "preset_list": [{"name": n, "builtin": n in config.BUILTIN_PRESETS, **p}
+                            for n, p in config.all_presets(s).items()]}
+
+
 @app.route("/api/state")
 def api_state():
-    return jsonify({"settings": config.load(), "state": loop.get_state_snapshot()})
+    return jsonify({"settings": _settings_payload(config.load()), "state": loop.get_state_snapshot()})
 
 
 @app.route("/api/history")
@@ -49,7 +55,22 @@ def api_settings():
         settings = config.save(body)
     except (ValueError, TypeError, IndexError) as e:
         return jsonify({"error": str(e)}), 400
-    return jsonify({"ok": True, "settings": settings})
+    return jsonify({"ok": True, "settings": _settings_payload(settings)})
+
+
+@app.route("/api/presets/<action>", methods=["POST"])
+def api_presets(action):
+    """apply / save / delete, body {"name": "..."}. save stores the current
+    curve + load minimum + timing under that name."""
+    body = request.get_json(silent=True) or {}
+    fn = {"apply": config.apply_preset, "save": config.save_preset, "delete": config.delete_preset}.get(action)
+    if fn is None:
+        return jsonify({"error": "unknown action"}), 404
+    try:
+        settings = fn(str(body.get("name", "")))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "settings": _settings_payload(settings)})
 
 
 @app.route("/api/fans")

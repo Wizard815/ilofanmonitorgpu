@@ -15,15 +15,22 @@ Tested on iLO 5 (v3.14, HPE ML350 Gen10) with two MI50s (gfx906, ROCm).
   fallback.
 - **One curve, one floor.** The control temperature is the hottest of
   junction and HBM + `mem_offset_c` across all GPUs. The curve maps it to a
-  fan minimum. Below the first curve point iLO runs the fans on its own.
-- **Load boost:** as soon as any GPU draws `load_power_w` or reaches
-  `load_busy_pct`, the minimum jumps to `load_floor_pct`, before the heat
-  arrives (junction can rise 20+ C within a second of load).
-- **Fast up, hold, step down:** the minimum rises at once. When it is no
-  longer needed it holds for `hold_sec`, then drops `step_down_pct` every
-  `step_down_sec` until it is back at `min_fan_pct` and iLO is in charge.
-  Targets are rounded up to `quantize_pct` so iLO isn't re-PATCHed for every
-  1% wiggle.
+  fan minimum.
+- **Fast takeover:** GPU sensors are read every `poll_sec` (0.5 s; sysfs
+  reads take ~1 ms). iLO writes run on their own thread, so a slow iLO
+  (0.3-2 s per PATCH) never delays the next read, and only the newest value
+  is sent. Load (`load_power_w` / `load_busy_pct`) jumps the minimum to
+  `load_floor_pct` before the heat arrives, and while the temperature climbs
+  the curve is read `predict_sec` ahead along the trend. The dashboard shows
+  detection-to-applied time for the last raise.
+- **Clean handoff:** fan-bridge learns what iLO runs the fans at on its own
+  (or use `ilo_baseline_pct`). It only takes control when it needs more than
+  that. Coming down, it holds for `hold_sec` (the timer waits while temps are
+  still rising), steps `step_down_pct` every `step_down_sec`, and hands back
+  to iLO as soon as the next step would be at or below iLO's own speed.
+- **Presets:** Quiet, Balanced, Performance, Max cooling, plus your own named
+  presets (curve, load minimum, look-ahead and step-down timing). One click
+  to switch; editing any of those values shows "Custom".
 - **iLO readback:** actual per-fan speeds, the current minimum and ambient
   temperature are read from iLO every `ilo_poll_sec` (and right after each
   change), so you can see whether the minimum is actually doing anything.
@@ -84,13 +91,15 @@ re-reads it every cycle. Main keys:
 | Key | Default | Meaning |
 |---|---|---|
 | `thresholds` | 6-point curve | `[temp_c, fan_pct]` points on control temp |
+| `predict_sec` | 3 | look ahead along a rising temperature (0 = off) |
+| `ilo_baseline_pct` | 0 | what iLO runs on its own (0 = learn it) |
 | `load_power_w` / `load_busy_pct` | 100 / 50 | what counts as "under load" |
 | `load_floor_pct` | 40 | minimum while under load (0 = off) |
 | `hold_sec` | 60 | hold before stepping down |
 | `step_down_sec` / `step_down_pct` | 15 / 5 | how fast it steps down |
 | `min_fan_pct` | 0 | idle minimum (0 = iLO fully in control) |
 | `quantize_pct` | 5 | round targets up to this step |
-| `poll_sec` / `ilo_poll_sec` | 1 / 5 | GPU and iLO read intervals |
+| `poll_sec` / `ilo_poll_sec` | 0.5 / 5 | GPU and iLO read intervals |
 | `mem_offset_c` | 11 | HBM counts as this much hotter (null = ignore HBM) |
 | `failsafe_fan_pct` / `failsafe_after_polls` | 60 / 5 | minimum when sensors vanish |
 | `perf_control` | false | perf on demand on/off |
@@ -101,7 +110,8 @@ Settings from the old trigger/cooldown/release version are dropped on first
 load; a customised 7-point curve is replaced by the default 6-point one.
 
 API: `GET /api/state`, `GET /api/history?since=<ts>`,
-`POST /api/settings` (any subset of the keys above, JSON), `GET /api/fans`.
+`POST /api/settings` (any subset of the keys above, JSON),
+`POST /api/presets/{apply,save,delete}` (`{"name": ...}`), `GET /api/fans`.
 
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 `SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
