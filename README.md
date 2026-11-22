@@ -8,6 +8,10 @@ hot, then hands control back to iLO once they cool down.
 
 Tested on iLO 5 (v3.14, HPE ML350 Gen10) with two MI50s (gfx906, ROCm).
 
+It can also run a JBOD's drive-bay fans: three 140 mm fans on an ESP32,
+driven from the drive temperatures, in a 3D-printed hinged hanger. See
+[JBOD fans](#jbod-fans-esp32) below.
+
 ## Features
 
 - **1 s polling straight from sysfs** (`/sys/class/drm/card*/device/hwmon`):
@@ -116,6 +120,35 @@ API: `GET /api/state`, `GET /api/history?since=<ts>`,
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 `SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
 (comma-separated PCI addresses), `FAN_BRIDGE_MCLK_WAIT_SEC` (default 1800).
+
+## JBOD fans (ESP32)
+
+For a JBOD whose own fans can't be controlled (an HPE D3600 here), this
+replaces them with three 140 mm PWM fans on an ESP32. They hang in a hinged
+duct in front of the drive bays, from a printed 1U tray.
+
+- Firmware, wiring and flashing: [esp32/README.md](esp32/README.md)
+- Printable hanger (OpenSCAD and STLs): [hardware/jbod-hanger/README.md](hardware/jbod-hanger/README.md)
+- Server side (`jbod.py`) runs in the same container:
+  - Every `jbod_poll_sec` it reads the drive temps and works out a speed from
+    the JBOD curve (hottest drive → %).
+  - Up is immediate; down is hold, then step.
+  - It POSTs the speed to the ESP32. If the ESP32 stops hearing from it, it
+    goes to its own failsafe speed.
+- Drive temps come from Unraid's `disks.ini` (mounted read-only; never wakes a
+  disk) or from `smartctl -n standby` (needs a privileged container). For
+  `disks.ini`, set *Settings → Disk Settings → Tunable (poll_attributes)* to
+  60. The default refresh is much slower.
+- Which drives count: by default, the ones behind a SAS expander (the JBOD),
+  or all of them if none are. You can also list them by name, device or
+  serial in the dashboard.
+- Setup:
+  1. Flash the ESP32.
+  2. Set the same token as `JBOD_TOKEN` in `docker-compose.yml` and
+     `API_TOKEN` in `secrets.h`.
+  3. Rebuild the container.
+  4. In the dashboard, open *Behaviour → JBOD fans*, turn it on and enter the
+     ESP32's address.
 
 ## Notes
 

@@ -11,6 +11,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 import config
 import ilo_fan
+import jbod
 import loop
 
 app = Flask(__name__, static_folder=None)
@@ -37,7 +38,8 @@ def _settings_payload(s: dict) -> dict:
 
 @app.route("/api/state")
 def api_state():
-    return jsonify({"settings": _settings_payload(config.load()), "state": loop.get_state_snapshot()})
+    return jsonify({"settings": _settings_payload(config.load()), "state": loop.get_state_snapshot(),
+                    "jbod": jbod.snapshot()})
 
 
 @app.route("/api/history")

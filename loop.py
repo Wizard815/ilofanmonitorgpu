@@ -32,6 +32,7 @@ import time
 
 import config
 import ilo_fan
+import jbod
 import mclk
 import perf
 
@@ -445,5 +446,6 @@ def start_background_thread() -> threading.Thread:
     t.start()
     if ilo is not None:
         threading.Thread(target=_supervise, args=(_ilo_poller, ilo), daemon=True, name="ilo-poller").start()
+    threading.Thread(target=_supervise, args=(jbod.run_forever, _log), daemon=True, name="jbod").start()
     mclk.start_thread(_log)
     return t

@@ -3,7 +3,7 @@ FROM rocm/rocm-terminal:latest
 # rocm-terminal already ships rocm-smi. Add python deps for the Flask UI + loop.
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-pip \
+        python3 python3-pip smartmontools \
     && rm -rf /var/lib/apt/lists/*
 
 # --break-system-packages only exists on pip >=23 (PEP 668 guard) --
@@ -13,7 +13,7 @@ RUN pip3 install --no-cache-dir --break-system-packages requests flask gunicorn 
     || pip3 install --no-cache-dir requests flask gunicorn upp==0.2.4
 
 WORKDIR /app
-COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py /app/
+COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py jbod.py /app/
 COPY static /app/static
 
 # Settings persist here -- mount this as a volume so edits survive restarts.

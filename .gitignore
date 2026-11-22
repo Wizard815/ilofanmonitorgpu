@@ -6,3 +6,7 @@ ilorest_logs/
 __pycache__/
 *.pyc
 .env
+
+# ESP32 build output and Wi-Fi secrets
+esp32/.pio/
+esp32/jbod_fans/secrets.h
