@@ -95,6 +95,7 @@ DEFAULTS = {
     "perf_power_w": 80,
 
     "paused": False,
+    "temp_unit": "F",            # dashboard display only; everything inside stays Celsius
     "presets": {},               # user presets: name -> {PRESET_KEYS}
 
     # JBOD fans on an ESP32 (jbod.py, esp32/jbod_fans). These fans are the
@@ -134,6 +135,7 @@ SCHEMA = {
     "perf_busy_pct": (float, 0, 100),
     "perf_power_w": (float, 0, 400),
     "paused": (bool, None, None),
+    "temp_unit": (str, ("F", "C"), None),
     "jbod_enabled": (bool, None, None),
     "jbod_host": (str, None, 120),
     "jbod_source": (str, ("unraid", "smartctl"), None),
