@@ -27,6 +27,10 @@ CURVE_POINTS = 6
 # speed (usually 15-25% on an ML350 Gen10).
 DEFAULT_CURVE = [[60, 15], [70, 25], [78, 35], [84, 50], [90, 70], [96, 100]]
 
+# JBOD drive-bay fans (ESP32, see jbod.py). Drive temps, not GPU temps: HDDs
+# are happiest under ~40 C and most are rated to 55-60 C.
+DEFAULT_JBOD_CURVE = [[30, 25], [35, 30], [38, 40], [41, 55], [45, 80], [48, 100]]
+
 # A preset is a named fan profile: these keys, applied together.
 PRESET_KEYS = ("thresholds", "load_floor_pct", "predict_sec", "hold_sec", "step_down_pct", "step_down_sec")
 
@@ -92,6 +96,20 @@ DEFAULTS = {
 
     "paused": False,
     "presets": {},               # user presets: name -> {PRESET_KEYS}
+
+    # JBOD fans on an ESP32 (jbod.py, esp32/jbod_fans). These fans are the
+    # drives' only cooling, so they never go below jbod_min_pct.
+    "jbod_enabled": False,
+    "jbod_host": "jbod-fans.local",   # ESP32 address
+    "jbod_source": "unraid",          # unraid (disks.ini) | smartctl
+    "jbod_disks": "",                 # comma list of names/devices/serials; empty = auto
+    "jbod_curve": DEFAULT_JBOD_CURVE,
+    "jbod_min_pct": 25,
+    "jbod_failsafe_pct": 80,          # ESP32 uses this when it stops hearing from us
+    "jbod_hold_sec": 120,
+    "jbod_step_down_pct": 5,
+    "jbod_step_down_sec": 30,
+    "jbod_poll_sec": 5,               # user presets: name -> {PRESET_KEYS}
 }
 
 # key -> (type, min, max). None bounds = unbounded.
@@ -116,7 +134,19 @@ SCHEMA = {
     "perf_busy_pct": (float, 0, 100),
     "perf_power_w": (float, 0, 400),
     "paused": (bool, None, None),
+    "jbod_enabled": (bool, None, None),
+    "jbod_host": (str, None, 120),
+    "jbod_source": (str, ("unraid", "smartctl"), None),
+    "jbod_disks": (str, None, 500),
+    "jbod_min_pct": (int, 20, 100),
+    "jbod_failsafe_pct": (int, 30, 100),
+    "jbod_hold_sec": (float, 0, 3600),
+    "jbod_step_down_pct": (int, 1, 50),
+    "jbod_step_down_sec": (float, 5, 600),
+    "jbod_poll_sec": (float, 2, 60),
 }
+
+CURVE_KEYS = ("thresholds", "jbod_curve")
 
 # Keys from the old trigger/cooldown/held model. Dropped on load.
 _OBSOLETE = {"target_max_c", "max_fan_pct", "hysteresis_c", "cooldown_sec", "release_sec",
@@ -148,6 +178,13 @@ def _coerce(key, value):
     typ, lo, hi = SCHEMA[key]
     if key == "mem_offset_c" and value in (None, "", "null"):
         return None
+    if typ is str:
+        v = str(value if value is not None else "").strip()
+        if isinstance(lo, tuple):          # choices
+            if v not in lo:
+                raise ValueError(f"{key} must be one of {', '.join(lo)}")
+            return v
+        return v[:hi] if hi else v
     if typ is bool:
         if isinstance(value, str):
             return value.lower() in ("1", "true", "on", "yes")
@@ -165,7 +202,7 @@ def _normalize(data: dict) -> dict:
     for k, v in data.items():
         if k in _OBSOLETE:
             continue
-        if k == "thresholds":
+        if k in CURVE_KEYS:
             try:
                 out[k] = clean_curve(v)
             except (ValueError, TypeError, IndexError):
@@ -247,7 +284,7 @@ def save(partial: dict) -> dict:
     with _lock:
         current = copy.deepcopy(_load_locked())
         for k, v in partial.items():
-            if k == "thresholds":
+            if k in CURVE_KEYS:
                 current[k] = clean_curve(v)
             elif k in SCHEMA:
                 current[k] = _coerce(k, v)

@@ -110,6 +110,13 @@ details summary { cursor: pointer; color: var(--text-2); font-weight: 600; font-
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .chip .x { opacity: .6; padding-left: 4px; } .chip .x:hover { opacity: 1; }
 .chip.ghost { border-style: dashed; color: var(--text-2); }
+.drives { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.drive { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.drive b { display: block; font-size: 15px; font-weight: 600; }
+.drive.off { opacity: .45; } .drive.warn b { color: var(--warn); } .drive.crit b { color: var(--crit); }
+.drive.hot { border-color: var(--text-2); }
+.field input[type=text], .field select { font: inherit; width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.field.wide { grid-template-columns: 1fr 150px; }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
 </style>
 </head>
@@ -158,7 +165,7 @@ details summary { cursor: pointer; color: var(--text-2); font-weight: 600; font-
   <div class="grid g2 section" id="gpus"></div>
 
   <div class="card section">
-    <h2>Fan curve</h2>
+    <h2>GPU fan curve (iLO)</h2>
     <div class="chips" id="presets"></div>
     <div class="legend">
       <span style="--c:var(--s1)">Curve (drag points)</span>
@@ -170,6 +177,38 @@ details summary { cursor: pointer; color: var(--text-2); font-weight: 600; font-
     <div class="curve-pts" id="curvePts"></div>
     <p class="help">X axis is the control temperature: the hottest of junction and HBM + offset, across both GPUs. Below the first point iLO runs the fans on its own. The fan minimum only has an effect above what iLO is already doing (grey band), so control is taken only above it and handed back as soon as stepping down would drop into it. Presets store the curve, load minimum, look-ahead and step-down timing.</p>
     <div style="margin-top:8px"><button id="resetCurve">Reset curve</button></div>
+  </div>
+
+  <h2 class="section" style="font-size:13px;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 8px">JBOD drive bays <span class="pill" id="jbPill" style="margin-left:6px;text-transform:none;letter-spacing:0"><span class="dot" id="jbDot"></span><span id="jbText">--</span></span></h2>
+  <div class="grid g3">
+    <div class="card">
+      <h2>JBOD fans (ESP32)</h2>
+      <div class="big" id="jbPct">--<small>%</small></div>
+      <div class="sub" id="jbSub">&nbsp;</div>
+    </div>
+    <div class="card">
+      <h2>Fan speed (tach)</h2>
+      <div id="jbFans" class="muted">No reading from the ESP32.</div>
+      <div class="sub" id="jbLink"></div>
+    </div>
+    <div class="card">
+      <h2>Hottest drive</h2>
+      <div class="big" id="jbHot">--<small>°C</small></div>
+      <div class="sub" id="jbHotSub">&nbsp;</div>
+    </div>
+  </div>
+  <div class="card section">
+    <h2>Drives</h2>
+    <div class="drives" id="jbDrives"><span class="muted">No drive list yet.</span></div>
+    <p class="help" id="jbDrivesHelp">Outlined drives count toward the fan speed. Empty "Drives" setting = drives behind a SAS expander (the JBOD), or all of them if none are.</p>
+  </div>
+  <div class="card section">
+    <h2>JBOD fan curve</h2>
+    <div class="legend"><span style="--c:var(--s3)">Curve</span><span class="dash" style="--c:var(--s2)">Never below</span><span class="nomark">● Hottest drive now</span></div>
+    <div class="chart-wrap"><svg id="jbCurve" viewBox="0 0 720 220"></svg></div>
+    <div class="curve-pts" id="jbCurvePts"></div>
+    <p class="help">X axis is the hottest JBOD drive. These fans are the drives' only cooling, so they never stop: below the first point they run at the curve's first value, and never below "Never below". If the ESP32 stops hearing from this server it goes to its failsafe speed on its own.</p>
+    <div style="margin-top:8px"><button id="jbReset">Reset curve</button></div>
   </div>
 
   <div class="card section">
@@ -194,7 +233,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmt = (v, d = 0) => v == null ? '--' : Number(v).toFixed(d);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let S = null, ST = null, hist = [], lastHistTs = 0, dragging = null;
+let S = null, ST = null, JB = null, hist = [], lastHistTs = 0, dragging = null;
 const DEFAULT_CURVE = [[60,15],[70,25],[78,35],[84,50],[90,70],[96,100]];
 const T_MIN = 30, T_MAX = 110;
 
@@ -220,6 +259,10 @@ const FIELDS = [
     ['mem_offset_c', 'HBM offset', '°C'], ['failsafe_fan_pct', 'Sensors lost →', '%'], ['failsafe_after_polls', 'After missed polls', ''], ['quantize_pct', 'Round up to', '%']]],
   ['GPU perf on demand', 'Locks clocks high while the GPUs are in use, back to auto after the idle time. Needs the writable sysfs mounts.', [
     ['perf_control', 'Enabled', 'bool'], ['perf_idle_sec', 'Idle before auto', 's'], ['perf_busy_pct', 'Active: busy ≥', '%'], ['perf_power_w', 'or power ≥', 'W']]],
+  ['JBOD fans (ESP32)', 'Drives: comma list of Unraid names (disk3), devices (sdf) or serial fragments. Empty = auto. Source "unraid" reads disks.ini; "smartctl" needs a privileged container.', [
+    ['jbod_enabled', 'Enabled', 'bool'], ['jbod_host', 'ESP32 address', 'text'], ['jbod_source', 'Temp source', 'select:unraid,smartctl'], ['jbod_disks', 'Drives', 'text'],
+    ['jbod_min_pct', 'Never below', '%'], ['jbod_failsafe_pct', 'Failsafe (ESP32 alone)', '%'], ['jbod_hold_sec', 'Hold before stepping', 's'],
+    ['jbod_step_down_pct', 'Step size', '%'], ['jbod_step_down_sec', 'Every', 's'], ['jbod_poll_sec', 'Update every', 's']]],
   ['Polling', 'GPU reads are ~1 ms, so fast polling is cheap. iLO writes run on their own thread and never delay a read.', [['poll_sec', 'GPU sensors every', 's'], ['ilo_poll_sec', 'iLO fan readback every', 's']]],
 ];
 function buildSettings() {
@@ -228,7 +271,12 @@ function buildSettings() {
     const box = document.createElement('div');
     box.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${title}</div>`;
     for (const [key, label, unit] of fields) {
-      if (unit === 'bool') {
+      if (unit === 'text' || unit.startsWith('select:')) {
+        const d = document.createElement('label'); d.className = 'field wide';
+        d.innerHTML = `<span>${label}</span>` + (unit === 'text' ? `<input type="text" data-k="${key}" data-t="text" spellcheck="false">`
+          : `<select data-k="${key}" data-t="text">${unit.slice(7).split(',').map(o => `<option>${o}</option>`).join('')}</select>`);
+        box.appendChild(d);
+      } else if (unit === 'bool') {
         const l = document.createElement('label'); l.className = 'switch';
         l.innerHTML = `<input type="checkbox" data-k="${key}"> ${label}`;
         box.appendChild(l);
@@ -243,7 +291,7 @@ function buildSettings() {
   }
   root.addEventListener('change', e => {
     const k = e.target.dataset.k; if (!k) return;
-    const v = e.target.type === 'checkbox' ? e.target.checked : (e.target.value === '' ? null : Number(e.target.value));
+    const v = e.target.type === 'checkbox' ? e.target.checked : e.target.dataset.t === 'text' ? e.target.value : (e.target.value === '' ? null : Number(e.target.value));
     saveSettings({[k]: v});
   });
 }
@@ -374,6 +422,86 @@ function timeChart(svg, tip, W0, H, series, yMin, yMax, yUnit, yTicks) {
     tip.style.left = (px > r.width / 2 ? px - tip.offsetWidth - 10 : px + 10) + 'px'; tip.style.top = '4px';
   });
 }
+// ---------- JBOD ----------
+const JB_PHASE = {off: ['Off', ''], ok: ['Following drive temps', 'good'], hold: ['Holding', 'info'], ramp: ['Stepping down', 'info'],
+  failsafe: ['Failsafe: drive temps unreadable', 'crit'], 'no-link': ['ESP32 unreachable', 'crit']};
+const DEFAULT_JB_CURVE = [[30,25],[35,30],[38,40],[41,55],[45,80],[48,100]];
+function renderJbod() {
+  const J = JB || {}, esp = J.esp || {};
+  let [label, cls] = JB_PHASE[J.phase] || [J.phase || '--', ''];
+  if (J.phase === 'hold') label += ` · ${J.countdown_sec}s`;
+  if (J.phase === 'ramp' && J.countdown_sec) label += ` · next step ${J.countdown_sec}s`;
+  $('jbText').textContent = label; $('jbDot').className = 'dot ' + cls;
+  if (!J.enabled) {
+    $('jbPct').innerHTML = '--<small>%</small>';
+    $('jbSub').textContent = 'Off. Turn on under Behaviour → JBOD fans. Until then the ESP32 runs its own failsafe.';
+  } else {
+    $('jbPct').innerHTML = `${fmt(esp.pct != null && J.esp_ok ? esp.pct : J.sent_pct)}<small>%</small>`;
+    const why = [J.reason];
+    if (J.esp_ok && esp.mode && esp.mode !== 'server') why.push('ESP32: ' + esp.mode);
+    if (J.sent_pct > J.target_pct) why.push(`needs ${J.target_pct}%, holding higher`);
+    $('jbSub').textContent = why.filter(Boolean).join(' · ');
+  }
+  if (J.esp_ok && esp.rpm) {
+    $('jbFans').className = '';
+    const mx = Math.max(1500, ...esp.rpm);
+    $('jbFans').innerHTML = esp.rpm.map((r, i) => `<div class="fanrow"><span>Fan ${i + 1}${esp.stalled && esp.stalled[i] ? ' ⚠' : ''}</span><div class="bar"><i style="width:${clamp(r / mx * 100, 0, 100)}%;background:${esp.stalled && esp.stalled[i] ? 'var(--crit)' : 'var(--s3)'}"></i></div><span class="v" style="width:auto">${r}</span></div>`).join('') +
+      '<div class="muted" style="font-size:12px;text-align:right">rpm</div>';
+  } else if (J.enabled) { $('jbFans').className = 'muted'; $('jbFans').textContent = 'No reading from the ESP32.'; }
+  const bits = [];
+  if (J.enabled) bits.push(J.esp_ok ? 'link ok' : 'link down: ' + (J.esp_error || '?'));
+  if (J.esp_ok && esp.probe_c != null) bits.push(`exhaust ${fmt(esp.probe_c, 1)}°C`);
+  if (J.esp_ok && esp.rssi) bits.push(`Wi-Fi ${esp.rssi} dBm`);
+  if (J.esp_ok && esp.fw) bits.push('fw ' + esp.fw);
+  $('jbLink').textContent = bits.join(' · ');
+  const H = J.hottest;
+  $('jbHot').innerHTML = `${H ? fmt(H.temp_c) : '--'}<small>°C</small>`;
+  const used = (J.drives || []).filter(d => d.used), asleep = used.filter(d => d.standby).length;
+  $('jbHotSub').textContent = J.source_error ? 'Error: ' + J.source_error : H ? `${H.name} · ${used.length} drives counted` + (asleep ? `, ${asleep} spun down` : '') : (J.enabled ? J.reason || '' : '');
+  const drives = J.drives || [];
+  const hd = drives.map(d => {
+    const c = d.temp_c == null ? 'off' : d.temp_c >= 50 ? 'crit' : d.temp_c >= 45 ? 'warn' : '';
+    return `<div class="drive ${c} ${H && H.name === d.name ? 'hot' : ''}" style="${d.used ? '' : 'border-style:dashed;opacity:.55'}" title="${esc(d.id || '')}">${esc(d.name)}<span class="muted"> ${esc(d.device)}</span><b>${d.temp_c == null ? 'asleep' : fmt(d.temp_c) + '°C'}</b>${d.expander ? '<span class="muted">expander</span>' : ''}</div>`;
+  }).join('');
+  const box = $('jbDrives'); if (hd && box._h !== hd) { box.innerHTML = hd; box._h = hd; }
+  renderJbCurve();
+}
+function renderJbCurve() {
+  const svg = $('jbCurve'), c = S.jbod_curve, H0 = 220; svg.innerHTML = '';
+  const W = svg.clientWidth || 720; svg.setAttribute('viewBox', `0 0 ${W} ${H0}`);
+  const L = 40, R = 16, T = 22, B = 26, ph = H0 - T - B, t0 = 25, t1 = 55;
+  const x = t => L + (clamp(t, t0, t1) - t0) / (t1 - t0) * (W - L - R), y = p => T + (1 - clamp(p, 0, 100) / 100) * ph;
+  for (const p of [0, 25, 50, 75, 100]) { el('line', {x1: L, x2: W - R, y1: y(p), y2: y(p), stroke: 'var(--grid)'}, svg); el('text', {x: L - 6, y: y(p) + 4, 'text-anchor': 'end'}, svg).textContent = p + '%'; }
+  for (let t = t0; t <= t1; t += (W < 500 ? 10 : 5)) el('text', {x: x(t), y: H0 - 6, 'text-anchor': 'middle'}, svg).textContent = t + '°';
+  const lo = S.jbod_min_pct;
+  el('line', {x1: L, x2: W - R, y1: y(lo), y2: y(lo), stroke: 'var(--s2)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4'}, svg);
+  el('text', {x: W - R, y: y(lo) - 5, 'text-anchor': 'end'}, svg).textContent = `never below ${lo}%`;
+  const eff = p => Math.max(lo, p);
+  const d = `M${L},${y(eff(c[0][1]))}` + c.map(([t, p]) => `L${x(t)},${y(eff(p))}`).join('') + `L${W - R},${y(eff(c[c.length - 1][1]))}`;
+  el('path', {d, fill: 'none', stroke: 'var(--s3)', 'stroke-width': 2.5, 'stroke-linejoin': 'round'}, svg);
+  c.forEach(([t, p]) => el('circle', {cx: x(t), cy: y(eff(p)), r: 5, fill: 'var(--s3)', stroke: 'var(--surface)', 'stroke-width': 2}, svg));
+  const Hd = JB && JB.hottest;
+  if (Hd) {
+    const t = Hd.temp_c, p = Math.min(100, Math.max(lo, Math.ceil((curveAt([[t0, c[0][1]], ...c], t) || c[0][1]) / 5) * 5));
+    el('line', {x1: x(t), x2: x(t), y1: T, y2: H0 - B, stroke: 'var(--axis)', 'stroke-dasharray': '2 3'}, svg);
+    el('circle', {cx: x(t), cy: y(p), r: 6, fill: 'var(--text)', stroke: 'var(--surface)', 'stroke-width': 2}, svg);
+    el('text', {x: clamp(x(t), L + 70, W - R - 70), y: T - 8, 'text-anchor': 'middle', style: 'fill:var(--text);font-weight:600'}, svg).textContent = `${Hd.name} ${t.toFixed(0)}° → ${p}%`;
+  }
+  const box = $('jbCurvePts');
+  if (!box.children.length) {
+    box.innerHTML = c.map((_, i) => `<div><label>Point ${i + 1}</label><div class="pair">
+      <span class="unit field" style="display:block;padding:0" data-u="°"><input type="number" step="1" data-i="${i}" data-j="0"></span>
+      <span class="unit field" style="display:block;padding:0" data-u="%"><input type="number" step="1" data-i="${i}" data-j="1"></span></div></div>`).join('');
+    box.addEventListener('change', e => {
+      const i = +e.target.dataset.i, j = +e.target.dataset.j; if (isNaN(i)) return;
+      const cc = S.jbod_curve.map(p => p.slice()); cc[i][j] = Number(e.target.value);
+      saveSettings({jbod_curve: cc}, 'JBOD curve saved');
+    });
+  }
+  if (!box.contains(document.activeElement)) box.querySelectorAll('input').forEach(inp => { inp.value = c[+inp.dataset.i][+inp.dataset.j]; });
+}
+$('jbReset').addEventListener('click', () => saveSettings({jbod_curve: DEFAULT_JB_CURVE}, 'JBOD curve reset'));
+
 function renderCharts() {
   const temps = hist.map(h => h[1]).filter(v => v != null);
   const lo = Math.floor((Math.min(...temps, 50) - 5) / 10) * 10, hi = Math.ceil((Math.max(...temps, 80) + 5) / 10) * 10;
@@ -466,12 +594,12 @@ $('pauseBtn').addEventListener('click', () => saveSettings({paused: !S.paused}, 
 async function tick() {
   try {
     const j = await api('/api/state');
-    ST = j.state;
+    ST = j.state; JB = j.jbod;
     if (!S || dragging === null) S = j.settings;
     const h = await api('/api/history?since=' + lastHistTs);
     if (h.history.length) { hist.push(...h.history); lastHistTs = hist[hist.length - 1][0]; }
     const cut = Date.now() / 1000 - 900; while (hist.length && hist[0][0] < cut) hist.shift();
-    fillSettings(); renderPresets(); renderStatus(); renderCharts(); if (dragging === null) renderCurve();
+    fillSettings(); renderPresets(); renderStatus(); renderJbod(); renderCharts(); if (dragging === null) renderCurve();
   } catch (e) {
     $('phaseText').textContent = 'Dashboard lost connection'; $('phaseDot').className = 'dot crit';
   }

@@ -36,10 +36,17 @@ services:
       #   FAN_BRIDGE_MCLK_PCI=0000:03:00.0,0000:04:00.0
       - FAN_BRIDGE_MCLK=off
       - FAN_BRIDGE_MCLK_PCI=
+      # JBOD fans (ESP32, esp32/jbod_fans): same value as API_TOKEN in secrets.h.
+      # Turn it on and set the ESP32's address in the dashboard.
+      - JBOD_TOKEN=change-me
+      - UNRAID_DISKS_INI=/unraid/disks.ini
 
     volumes:
       - ./secrets/ilo_creds.json:/run/secrets/ilo_creds.json:ro
       - ./data:/data   # settings.json persists here across rebuilds/restarts
+      # Unraid's drive list + temps, for the JBOD fans (read-only, never wakes a disk).
+      # Set Settings -> Disk Settings -> Tunable (poll_attributes) to 60 so temps stay fresh.
+      - /var/local/emhttp:/unraid:ro
       # Optional, needed for perf-on-demand and the MCLK step: one writable sysfs
       # device dir per GPU. Use the colon-free /sys/class/drm/cardN/device path
       # (find yours with: ls -l /sys/class/drm/card*/device). perf.py and mclk.py
@@ -50,3 +57,7 @@ services:
       # - type: bind
       #   source: /sys/class/drm/card2/device
       #   target: /gpu/card2
+
+    # Only for jbod_source = smartctl (fresh temps every 30 s instead of
+    # Unraid's poll interval): smartctl needs the raw disks.
+    # privileged: true
