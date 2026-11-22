@@ -152,6 +152,9 @@ duct in front of the drive bays, from a printed 1U tray.
 
 ## Notes
 
+- Temperatures show in °F by default; the °F/°C button in the header switches.
+  Internally (sensors, settings.json, curves, API) everything is Celsius.
+
 - Tests: `python3 -m pytest tests`.
 
 - Logs: `docker logs -f fan-bridge`, or the Log card on the dashboard.

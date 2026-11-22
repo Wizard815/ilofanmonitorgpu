@@ -96,7 +96,7 @@ about 70° for a few mm; they bridge fine without supports on most printers.
   100 % for the first test.
 - **Test under the worst case.** Run a parity check (every drive busy) with
   the new fans at 100 %, then on the curve, and watch the hottest drive on
-  the dashboard. Under about 45 °C is fine; much past 50 °C, get more airflow
+  the dashboard. Under about 45 °C (113 °F) is fine; much past 50 °C (122 °F), get more airflow
   (higher-pressure fans, a better seal) before you trust it.
 - The empty fan bays at the back become exhaust holes. That's fine with fans
   pushing in from the front; don't block them.
