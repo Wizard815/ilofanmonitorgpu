@@ -12,7 +12,7 @@
 // All sizes mm.
 
 /* [What to render] */
-part = "assembly"; // [assembly, duct_view, duct_left, duct_center, duct_right, tray_left, tray_center, tray_right, shelf, splice, pin_test]
+part = "assembly"; // [assembly, fit_gauge, duct_view, duct_left, duct_center, duct_right, tray_left, tray_center, tray_right, shelf, splice, pin_test]
 open_view = false;
 
 /* [Measure these on your rack] */
@@ -63,6 +63,7 @@ shelf_d = 110;
 pcb = [70, 90];           // perfboard carrying ESP32, buck, fan headers
 pcb_hole_inset = 3;
 dc_jack_d = 11;           // panel-mount 5.5x2.1 barrel jack (DC-022B)
+bed = 180;                // your printer's smaller bed side; parts are checked against it
 
 $fn = 64;
 eps = 0.01;
@@ -76,6 +77,24 @@ function rot2(p, a) = [H[0] + (p[0] - H[0]) * cos(a) - (p[1] - H[1]) * sin(a),
                        H[1] + (p[0] - H[0]) * sin(a) + (p[1] - H[1]) * cos(a)];
 B = rot2(P, open_angle);                             // tray hole that locks it open
 outer_x = 1.5 * module_w;                            // outer side of the duct row
+
+// ---------------------------------------------------------------- sanity checks
+// A bad measurement stops the export here instead of wasting filament.
+assert(module_w >= fan, "module_w must be at least the fan size");
+assert(bay_z1 > bay_z0 + 40, "bay_z0 / bay_z1 look wrong: measure the drive-bay opening height");
+assert(rim_y >= panel_t + lip + 3, "rim_y too small: the duct rim would hit the tray's front lips");
+assert(rim_y <= hinge_y - 6, "rim_y too large for this hinge: raise hinge_y (and fan_top_y) together with it");
+assert(outer_x + ear_t + 0.5 + arm_t <= rack_hole_x - 6, "duct row too wide: the hinge arm would sit under the rack screw heads");
+assert(pin_r + pin_d / 2 + 2 <= ear_r && pin_r - pin_d / 2 - hinge_d / 2 >= 2, "lock pin does not fit around the hinge bolt");
+assert(bay_z1 + rim_flange < hinge_z - ear_r + 25, "hinge sits too low for this bay height");
+assert(module_w + ear_t <= bed && panel_w / 2 - seg_x <= bed, "a part is larger than the bed setting");
+fan_bottom = [fan_top_y + fan * sin(tilt), fan_top_z - fan * cos(tilt)];
+assert(fan_bottom[1] > bay_z0 - 25, "the fan bottom hangs far below the JBOD: lower tilt or raise fan_top_z");
+// How far the swung-up duct reaches into the U above the tray (fan's top outer corner).
+open_top = rot2([fan_top_y + fan_t * cos(tilt), fan_top_z + fan_t * sin(tilt)], open_angle);
+echo(str("open: fan top reaches ", round(open_top[1] - (jbod_u + 1) * U), " mm into the U above, ",
+         round(open_top[0]), " mm in front of the posts; duct sticks out ",
+         round(fan_bottom[0] + fan_t * cos(tilt)), " mm when closed"));
 
 // ---------------------------------------------------------------- helpers
 // Local fan-face frame: u = x, v = down the face, n = out of the face.
@@ -251,6 +270,38 @@ module assembly() {
         ducts_placed();
 }
 
+// ---------------------------------------------------------------- fit gauge
+// Full-size side profile (y-z) of tray, hinge, duct and fan, 3 mm thick.
+// Hold it upright beside a rack post at the JBOD: the flat back edge on the
+// post's front face, the three notches on the rack holes of the U above the
+// JBOD. Then check the rim line lands ~5 mm in front of the drive handles and
+// the two rim notches line up with the top and bottom of the drive bays.
+module gauge_outline(t = 3) { difference() { children(); offset(delta = -t) children(); } }
+module duct_profile() {
+    hull() {
+        translate([rim_y, bay_z0 - wall]) square([eps, bay_z1 - bay_z0 + 2 * wall]);
+        polygon([face_pt(0, 0), face_pt(fan, 0), face_pt(fan, -eps), face_pt(0, -eps)]);
+    }
+    translate([rim_y, bay_z0 - rim_flange]) square([rim_t, bay_z1 - bay_z0 + 2 * rim_flange]);
+}
+module fit_gauge() {
+    linear_extrude(3) difference() {
+        union() {
+            gauge_outline() duct_profile();
+            gauge_outline() polygon([face_pt(0, 0), face_pt(fan, 0), face_pt(fan, fan_t), face_pt(0, fan_t)]);
+            hull() { translate(H) circle(r = ear_r); translate([panel_t - eps, tray_z0 + 3]) square([eps, tray_z1 - tray_z0 - 6]); }
+            translate([0, tray_z0]) square([panel_t + lip, tray_z1 - tray_z0]);       // faceplate + lips
+            translate([0, bay_z0 - 8]) square([4, tray_z1 - bay_z0 + 8]);              // back edge: sits on the post face
+            translate([0, bay_z0 - 8]) square([rim_y + rim_t, 4]);                    // ties the bottom together
+        }
+        translate(H) circle(d = hinge_d);
+        translate(P) circle(d = pin_d);
+        translate(B) circle(d = pin_d);
+        for (dz = [6.35, 22.225, 38.1]) translate([-eps, jbod_u * U + dz]) polygon([[0, -2], [3, 0], [0, 2]]);   // rack-hole notches
+        for (z = [bay_z0, bay_z1]) translate([rim_y + rim_t + eps, z]) polygon([[0, -2], [-3, 0], [0, 2]]);     // bay top/bottom
+    }
+}
+
 // ---------------------------------------------------------------- print layouts
 // Each part is laid flat in its print orientation.
 module print_duct(side) { rotate([90, 0, 0]) translate([0, -rim_y, 0]) duct(side); }            // rim on the bed
@@ -258,6 +309,7 @@ module print_tray(which) { rotate([90, 0, 0]) tray_segment(which); }            
 module print_shelf() { translate([0, 0, -tray_z0]) shelf(); }
 
 if (part == "assembly") assembly();
+else if (part == "fit_gauge") fit_gauge();
 else if (part == "duct_view") { color("SteelBlue") duct(1); }
 else if (part == "duct_left") print_duct(-1);
 else if (part == "duct_center") print_duct(0);

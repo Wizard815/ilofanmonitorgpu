@@ -127,6 +127,8 @@ For a JBOD whose own fans can't be controlled (an HPE D3600 here), this
 replaces them with three 140 mm PWM fans on an ESP32. They hang in a hinged
 duct in front of the drive bays, from a printed 1U tray.
 
+- **Build order and tests: [hardware/jbod-hanger/CHECKLIST.md](hardware/jbod-hanger/CHECKLIST.md)**
+- Unraid host survey (read-only; run first): `tools/jbod_survey.sh`
 - Firmware, wiring and flashing: [esp32/README.md](esp32/README.md)
 - Printable hanger (OpenSCAD and STLs): [hardware/jbod-hanger/README.md](hardware/jbod-hanger/README.md)
 - Server side (`jbod.py`) runs in the same container:

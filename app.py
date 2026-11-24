@@ -75,6 +75,15 @@ def api_presets(action):
     return jsonify({"ok": True, "settings": _settings_payload(settings)})
 
 
+@app.route("/api/jbod/selftest", methods=["POST"])
+def api_jbod_selftest():
+    """Start the ESP32's fan wiring self-test (~36 s; results in state.jbod.esp.selftest)."""
+    try:
+        return jsonify({"ok": True, "esp": jbod.start_selftest(config.load()["jbod_host"])})
+    except Exception as e:
+        return jsonify({"error": f"ESP32 not reachable: {e}"}), 502
+
+
 @app.route("/api/fans")
 def api_fans():
     """Raw fan list from iLO, for diagnostics."""

@@ -1,5 +1,8 @@
 # JBOD fan hanger
 
+**Building one? Follow [CHECKLIST.md](CHECKLIST.md)**: go/no-go checks,
+measurements, test prints, bench test and thermal acceptance, in order.
+
 A 3D-printed 1U rack tray that holds the ESP32 and power, with a hinged
 duct carrying three 140 mm fans. The duct hangs in front of a 2U 12-bay
 JBOD (built around an HPE D3600) and blows into the drive bays.
@@ -33,8 +36,11 @@ for a D3600, not measurements.
 | `tilt`, `fan_top_y`, `fan_top_z` | Fan angle and position | 20°, 55, 135 |
 | `open_angle` | How far it swings up. When open, the fan tops reach about 27 mm into the U above, 20 mm in front of the posts. Lower this if gear above has a deep bezel. | 75 |
 
-Print `pin_test` first (about 20 g). It's the hinge arm and a duct ear, to check
-the bolt and pin fit before the big parts.
+Print `fit_gauge` first: a flat, full-size side profile you hold against the
+rack to check the measurements. Then print `pin_test` (the hinge arm and a duct
+ear) to check the bolt and pin fit before the big parts. If a measurement can't
+work (rim too close, duct row too wide, part bigger than `bed`), the model stops
+with an error naming it.
 
 ## Parts
 
@@ -43,6 +49,7 @@ oriented for printing). Re-render the preview images with `./render.sh`.
 
 | Part | Qty | Size (mm) | Print orientation |
 |---|---|---|---|
+| `fit_gauge`, `pin_test` | 1 each | 126 × 150 × 3, 59 × 151 × 6 | Flat |
 | `duct_left`, `duct_center`, `duct_right` | 1 each | 148 × 141 × 73 | Rim face down, no supports |
 | `tray_left`, `tray_right` (with ears and hinge arms) | 1 each | 170 × 49 × 60 | Back face down, no supports |
 | `tray_center` | 1 | 142 × 44 × 10 | Back face down |
