@@ -81,6 +81,13 @@ curl http://jbod-fans.local/status
 curl -X POST -H "X-Token: change-me" "http://jbod-fans.local/set?pct=50&ttl=30"
 ```
 
+Then run the self-test (or use **Self-test fans** on the dashboard) and read
+`selftest` in the status after ~36 s. Every fan should say `ok`:
+
+```bash
+curl -X POST -H "X-Token: change-me" http://jbod-fans.local/selftest
+```
+
 The firmware builds with Arduino-ESP32 core 3.x (tested 3.3) and should also build on 2.x.
 
 ## API
@@ -88,6 +95,7 @@ The firmware builds with Arduino-ESP32 core 3.x (tested 3.3) and should also bui
 | | |
 |---|---|
 | `GET /status` | `{mode, pct, cmd_pct, cmd_age_s, ttl_s, failsafe_pct, rpm[3], stalled[3], probe_c, server_temp_c, uptime_s, rssi, fw}` |
+| `POST /selftest` | header `X-Token`. ~36 s wiring check: all fans at 30/60/100 %, then each alone at 100 %. Results (rpm + a verdict per fan: ok, no tach, PWM ignored, PWM inverted, crossed wires) appear under `selftest` in `/status`. Also a button on the dashboard. |
 | `POST /set?pct=N&ttl=S&fs=F&t=T` | header `X-Token`. pct 0–100, ttl 5–600 s, fs = failsafe 30–100 % (stored in flash), t = hottest drive (display only). Returns the status. |
 
 Tune pins, the probe curve and the safety limits at the top of `jbod_fans.ino`.

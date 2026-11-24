@@ -5,6 +5,7 @@
 //
 //   POST /set?pct=45&ttl=30&fs=80&t=39      header X-Token: <API_TOKEN>
 //   GET  /status                            JSON (rpm, mode, probe, ...)
+//   POST /selftest                          header X-Token: ~36 s wiring check, results in /status
 //   GET  /                                  small status page
 //
 // These fans are the drives' ONLY cooling, so every failure mode fails loud:
@@ -33,7 +34,7 @@
 #include <DallasTemperature.h>
 #endif
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 
 // ---- pins ---------------------------------------------------------------
 static const int FAN_COUNT = 3;
@@ -79,6 +80,33 @@ static int appliedPct = 100;
 static const char *mode = "boot";
 static float probeC = NAN;
 static uint32_t cmdCount = 0, authFails = 0;
+
+// ---- self-test: proves tach, PWM and fan<->pin mapping in ~36 s -----------
+// Steps 0-2: all fans at 30/60/100 %. Steps 3-5: fan i at 100 %, the others
+// at 30 %, which shows whether PWM pin i really drives the fan on tach pin i.
+static const int ST_LEVELS[3] = {30, 60, 100};
+static const int ST_STEPS = 3 + FAN_COUNT;
+static const uint32_t ST_STEP_MS = 6000;
+static int stStep = -1;                    // -1 idle
+static uint32_t stStepAt = 0;
+static bool stDone = false;
+static int stRpm[3][FAN_COUNT];            // per level
+static int stOwn[FAN_COUNT];               // fan i alone at 100 %
+
+static int stPct(int step, int fan) {
+  if (step < 3) return ST_LEVELS[step];
+  return (step - 3 == fan) ? 100 : 30;
+}
+
+static const char *stVerdict(int i) {
+  int r30 = stRpm[0][i], r100 = stRpm[2][i];
+  if (r30 == 0 && r100 == 0) return "no tach signal: fan not spinning, or tach wire / 10k pull-up to 3.3 V missing";
+  if (r30 > r100 * 1.2) return "speed falls as PWM rises: PWM is inverted, set PWM_INVERTED 1";
+  if (r100 < r30 * 1.2) return "speed ignores PWM: check the PWM wire (or drive it through a transistor, PWM_INVERTED 1)";
+  if (stOwn[i] < r100 * 0.8) return "this fan's PWM wire goes to a different fan: swap PWM wires";
+  if (r30 < STALL_RPM * 2) return "ok, but very slow at 30 %: check it never stalls at the minimum";
+  return "ok";
+}
 
 WebServer http(80);
 Preferences prefs;
@@ -154,6 +182,18 @@ static String statusJson() {
   s += ",\"uptime_s\":" + String(now / 1000);
   s += ",\"rssi\":" + String(WiFi.RSSI());
   s += ",\"commands\":" + String(cmdCount) + ",\"auth_failures\":" + String(authFails);
+  s += ",\"selftest\":{\"state\":\"" + String(stStep >= 0 ? "running" : stDone ? "done" : "idle") + "\"";
+  if (stStep >= 0) s += ",\"step\":" + String(stStep + 1) + ",\"of\":" + String(ST_STEPS);
+  if (stDone) {
+    s += ",\"fans\":[";
+    for (int i = 0; i < FAN_COUNT; i++) {
+      s += String(i ? "," : "") + "{\"rpm30\":" + String(stRpm[0][i]) + ",\"rpm60\":" + String(stRpm[1][i]) +
+           ",\"rpm100\":" + String(stRpm[2][i]) + ",\"alone\":" + String(stOwn[i]) +
+           ",\"verdict\":\"" + String(stVerdict(i)) + "\"}";
+    }
+    s += "]";
+  }
+  s += "}";
   s += "}";
   return s;
 }
@@ -171,6 +211,12 @@ static void handleSet() {
   }
   cmdAtMs = millis();
   cmdCount++;
+  http.send(200, "application/json", statusJson());
+}
+
+static void handleSelftest() {
+  if (!authorized()) { authFails++; http.send(401, "application/json", "{\"error\":\"bad token\"}"); return; }
+  if (stStep < 0) { stStep = 0; stStepAt = millis(); stDone = false; }
   http.send(200, "application/json", statusJson());
 }
 
@@ -206,7 +252,7 @@ static void updateRpm() {
     interrupts();
     rpm[i] = (int)(p * 60000UL / PULSES_PER_REV / dt);
     // Stall: asked to spin, isn't. Ignore the first seconds after boot.
-    if (appliedPct >= STALL_MIN_PCT && rpm[i] < STALL_RPM && now > 10000) {
+    if (stStep < 0 && appliedPct >= STALL_MIN_PCT && rpm[i] < STALL_RPM && now > 10000) {
       if (!lowSinceMs[i]) lowSinceMs[i] = now;
       stalled[i] = now - lowSinceMs[i] >= STALL_AFTER_MS;
     } else {
@@ -216,8 +262,26 @@ static void updateRpm() {
   }
 }
 
+static void runSelftest(uint32_t now) {
+  for (int i = 0; i < FAN_COUNT; i++) pwmWrite(i, stPct(stStep, i));
+  if (now - stStepAt < ST_STEP_MS) return;
+  // rpm[] is refreshed every second, so after 6 s it reflects the settled speed
+  for (int i = 0; i < FAN_COUNT; i++) {
+    if (stStep < 3) stRpm[stStep][i] = rpm[i];
+    else if (stStep - 3 == i) stOwn[i] = rpm[i];
+  }
+  if (++stStep >= ST_STEPS) { stStep = -1; stDone = true; appliedPct = -1; }  // -1 forces a rewrite below
+  stStepAt = now;
+}
+
 static void control() {
   uint32_t now = millis();
+  if (stStep >= 0) {
+    mode = "selftest";
+    runSelftest(now);
+    digitalWrite(LED_PIN, (now / 300) % 2);
+    if (stStep >= 0) return;
+  }
   bool fresh = cmdPct >= 0 && now - cmdAtMs < ttlMs;
   int local = isnan(probeC) ? -1 : curvePct(probeC);
   int pct;
@@ -290,6 +354,7 @@ void setup() {
   http.on("/", HTTP_GET, [] { http.send_P(200, "text/html", PAGE); });
   http.on("/status", HTTP_GET, [] { http.send(200, "application/json", statusJson()); });
   http.on("/set", HTTP_POST, handleSet);
+  http.on("/selftest", HTTP_POST, handleSelftest);
   http.onNotFound([] { http.send(404, "application/json", "{\"error\":\"not found\"}"); });
   http.begin();
   Serial.printf("jbod-fans %s, failsafe %d%%\n", FW_VERSION, failsafePct);

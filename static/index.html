@@ -191,6 +191,8 @@ details summary { cursor: pointer; color: var(--text-2); font-weight: 600; font-
       <h2>Fan speed (tach)</h2>
       <div id="jbFans" class="muted">No reading from the ESP32.</div>
       <div class="sub" id="jbLink"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="jbTest" title="~36 s: runs the fans at 30/60/100 % and one at a time, to check tach, PWM and which wire goes where">Self-test fans</button><span class="muted" id="jbTestState" style="font-size:12px"></span></div>
+      <div id="jbTestOut" style="font-size:12px;margin-top:6px"></div>
     </div>
     <div class="card">
       <h2>Hottest drive</h2>
@@ -447,13 +449,14 @@ function timeChart(svg, tip, W0, H, series, yMin, yMax, yUnit, yTicks) {
   });
 }
 // ---------- JBOD ----------
-const JB_PHASE = {off: ['Off', ''], ok: ['Following drive temps', 'good'], hold: ['Holding', 'info'], ramp: ['Stepping down', 'info'],
+const JB_PHASE = {off: ['Off', ''], selftest: ['Fan self-test running', 'info'], ok: ['Following drive temps', 'good'], hold: ['Holding', 'info'], ramp: ['Stepping down', 'info'],
   failsafe: ['Failsafe: drive temps unreadable', 'crit'], 'no-link': ['ESP32 unreachable', 'crit']};
 const DEFAULT_JB_CURVE = [[30,25],[35,30],[38,40],[41,55],[45,80],[48,100]];
 function renderJbod() {
   const J = JB || {}, esp = J.esp || {};
-  let [label, cls] = JB_PHASE[J.phase] || [J.phase || '--', ''];
-  if (J.phase === 'hold') label += ` · ${J.countdown_sec}s`;
+  const testing = J.esp_ok && esp.selftest && esp.selftest.state === 'running';
+  let [label, cls] = JB_PHASE[testing ? 'selftest' : J.phase] || [J.phase || '--', ''];
+  if (J.phase === 'hold' && !testing) label += ` · ${J.countdown_sec}s`;
   if (J.phase === 'ramp' && J.countdown_sec) label += ` · next step ${J.countdown_sec}s`;
   $('jbText').textContent = label; $('jbDot').className = 'dot ' + cls;
   if (!J.enabled) {
@@ -478,6 +481,7 @@ function renderJbod() {
   if (J.esp_ok && esp.rssi) bits.push(`Wi-Fi ${esp.rssi} dBm`);
   if (J.esp_ok && esp.fw) bits.push('fw ' + esp.fw);
   $('jbLink').textContent = bits.join(' · ');
+  renderSelftest(J.esp_ok ? esp : null);
   const H = J.hottest;
   $('jbHot').innerHTML = `${H ? tf(H.temp_c) : '--'}<small>${U()}</small>`;
   const used = (J.drives || []).filter(d => d.used), asleep = used.filter(d => d.standby).length;
@@ -524,6 +528,19 @@ function renderJbCurve() {
   }
   if (!box.contains(document.activeElement)) box.querySelectorAll('input').forEach(inp => {
     const v = c[+inp.dataset.i][+inp.dataset.j]; inp.value = +inp.dataset.j ? v : Math.round(toU(v)); inp.parentNode.dataset.u = +inp.dataset.j ? '%' : U(); });
+}
+$('jbTest').addEventListener('click', async () => {
+  if (!confirm('Run the fan self-test? The JBOD fans run 30–100 % for about 36 s and ignore the curve meanwhile.')) return;
+  try { await api('/api/jbod/selftest', {}); toast('Self-test started'); } catch (e) { toast(e.message); }
+});
+function renderSelftest(esp) {
+  const t = (esp && esp.selftest) || {state: 'idle'};
+  $('jbTest').disabled = !JB.esp_ok || t.state === 'running';
+  $('jbTestState').textContent = t.state === 'running' ? `running, step ${t.step} of ${t.of}…` : t.state === 'done' ? 'last result:' : '';
+  const html = t.state === 'done' && t.fans ? t.fans.map((f, i) => `<div class="row" style="align-items:baseline"><span class="k" style="white-space:nowrap">Fan ${i + 1}</span>
+    <span style="text-align:right"><span style="color:${f.verdict === 'ok' ? 'var(--good)' : f.verdict.startsWith('ok') ? 'var(--warn)' : 'var(--crit)'}">${esc(f.verdict)}</span><br>
+    <span class="muted">${f.rpm30} / ${f.rpm60} / ${f.rpm100} rpm at 30/60/100 %</span></span></div>`).join('') : '';
+  if ($('jbTestOut')._h !== html) { $('jbTestOut').innerHTML = html; $('jbTestOut')._h = html; }
 }
 $('jbReset').addEventListener('click', () => saveSettings({jbod_curve: DEFAULT_JB_CURVE}, 'JBOD curve reset'));
 

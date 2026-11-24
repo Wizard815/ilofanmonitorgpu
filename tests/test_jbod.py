@@ -60,6 +60,13 @@ class JbodTest(unittest.TestCase):
         d = jbod.select_drives(jbod.parse_disks_ini(INI), [])
         self.assertTrue(all(x["used"] for x in d))
 
+    def test_auto_fallback_skips_nvme_and_ssd(self):
+        ini = INI + '["cache"]\nname="cache"\ndevice="nvme0n1"\ntype="Cache"\ntemp="48"\n' \
+                    '["ssd"]\nname="ssd"\ndevice="sdz"\nrotational="0"\ntype="Cache"\ntemp="45"\n'
+        d = jbod.select_drives(jbod.parse_disks_ini(ini), [])
+        self.assertEqual({x["name"] for x in d if x["used"]}, {"parity", "disk1", "disk2"})
+        self.assertEqual(jbod.compute_target(d, S())[2]["name"], "disk2")
+
     def test_target_hottest_rounded_up(self):
         d = jbod.select_drives(jbod.parse_disks_ini(INI), [])
         pct, why, hot = jbod.compute_target(d, S())

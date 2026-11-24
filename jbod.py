@@ -105,7 +105,7 @@ def parse_disks_ini(text: str) -> list:
         except ValueError:
             temp = None
         out.append({"name": d["name"], "device": dev, "id": d.get("id", ""),
-                    "temp_c": temp, "standby": temp is None})
+                    "temp_c": temp, "standby": temp is None, "rotational": d.get("rotational", "")})
     return out
 
 
@@ -149,7 +149,8 @@ def _patterns(s: dict) -> list:
 
 def select_drives(drives: list, patterns: list) -> list:
     """Mark which drives count. Explicit patterns match name, device or serial
-    (substring, 6+ characters so "disk1" never matches "disk10"). No patterns: drives behind a SAS expander, else all."""
+    (substring, 6+ characters so "disk1" never matches "disk10"). No patterns: drives behind a SAS expander,
+    else every spinning disk (NVMe and SSDs left out)."""
     for d in drives:
         d["expander"] = behind_expander(d["device"])
     if patterns:
@@ -157,9 +158,13 @@ def select_drives(drives: list, patterns: list) -> list:
             d["used"] = any(p == d["name"] or p == d["device"] or (len(p) >= 6 and p in d.get("id", ""))
                             for p in patterns)
     else:
+        # Fallback when nothing sits behind an expander (e.g. a RAID card that
+        # hides the topology): every spinning disk, never NVMe/SSD pools --
+        # those idle at 40 C+ and would pin the JBOD fans high.
         any_exp = any(d["expander"] for d in drives)
         for d in drives:
-            d["used"] = d["expander"] or not any_exp
+            d["used"] = d["expander"] or (not any_exp and not d["device"].startswith("nvme")
+                                          and d.get("rotational", "1") != "0")
     return drives
 
 
@@ -239,6 +244,16 @@ def send(host: str, pct: int, ttl: int, failsafe: int, temp, timeout: float = 3.
                                  headers={"X-Token": TOKEN})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
+
+
+def start_selftest(host: str, timeout: float = 3.0) -> dict:
+    """Ask the ESP32 to run its ~36 s wiring self-test. While it runs the
+    ESP32 ignores our speed; results show up in its status."""
+    req = urllib.request.Request(f"http://{host}/selftest", data=b"", method="POST", headers={"X-Token": TOKEN})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        resp = json.loads(r.read().decode())
+    _set(esp=resp, esp_ok=True, esp_error=None, esp_ts=time.time())
+    return resp
 
 
 def run_forever(log) -> None:
