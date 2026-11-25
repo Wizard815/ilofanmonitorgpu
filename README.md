@@ -50,6 +50,9 @@ driven from the drive temperatures, in a 3D-printed hinged hanger. See
   (`smcPPTable/FreqTableUclk/2` and `/3`, via [UPP](https://github.com/sibradzic/upp)).
   Backs up each pp_table first and restores it on any failure. Nothing is
   flashed: a reboot loads the stock VBIOS table.
+- **Power API (optional):** `GET/POST /api/power` reads and sets each
+  MI50's power cap and top core clock on the writable sysfs mounts, for
+  Argos's Profiles -> Power. See [Power cap API](#power-cap-api).
 - **Safety:** threads restart themselves after a crash; if GPU sensors vanish
   for `failsafe_after_polls` polls it sets `failsafe_fan_pct`; on start it
   reads the minimum iLO already has and holds/steps it down normally; settings
@@ -120,6 +123,35 @@ API: `GET /api/state`, `GET /api/history?since=<ts>`,
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 `SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
 (comma-separated PCI addresses), `FAN_BRIDGE_MCLK_WAIT_SEC` (default 1800).
+
+## Power cap API
+
+Argos (Profiles -> Power) sets a power cap and, optionally, a top core
+clock per model profile. Inside its container `/sys` is read-only, so it
+sends them here: fan-bridge already has each GPU's sysfs device dir mounted
+writable (the same `/gpu/cardN` mounts perf-on-demand uses).
+
+```
+GET  /api/power   -> {"cards": [{pci, cap_w, cap_min_w, cap_max_w, cap_default_w,
+                                 sclk_levels_mhz, sclk_limit_mhz, junction_c, ...}],
+                      "guard_c": 95, "fans": {...}}
+POST /api/power   {"cards": {"0000:03:00.0": {"cap_w": 180, "sclk_mhz": null}}}
+```
+
+`cap_w: null` writes the card's default cap back; `sclk_mhz: null` lifts a
+clock limit. A number sets `power_dpm_force_performance_level` to `manual`
+and keeps the `pp_dpm_sclk` levels at or below it.
+
+- **A raise is refused** (a higher cap, or a clock limit lifted) while the
+  control temperature is at or above `POWER_GUARD_C` (default 95) or the loop
+  is in failsafe. A cut always goes through.
+- The cap stays inside the card's own `power1_cap_min` / `power1_cap_max`.
+- While a card has a clock limit, perf-on-demand leaves that card alone;
+  lifting the limit hands it back.
+- Set `FAN_BRIDGE_POWER_TOKEN` to require the same value in an
+  `X-Power-Token` header (Argos: Settings -> GPU power -> fan-bridge power
+  token). Without it, anyone who can reach port 5000 can change the caps.
+- Nothing persists: a reboot brings back the BIOS values.
 
 ## JBOD fans (ESP32)
 
