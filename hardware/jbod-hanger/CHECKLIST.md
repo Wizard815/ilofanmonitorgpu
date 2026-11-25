@@ -1,5 +1,8 @@
 # JBOD fans: one-pass build checklist
 
+Tick-box companion to the **[build guide](../../docs/jbod/GUIDE.md)**: parts,
+wiring diagram, flashing and assembly steps are there.
+
 The order is set up so nothing big gets printed, bought or wired before the
 cheap checks pass. Fill in the blanks as you go; the measurements go
 straight into `jbod_hanger.scad`.
@@ -107,7 +110,7 @@ Choices that matter:
 
 ## 5. Bench test the electronics (1 h, before anything goes in the rack)
 
-- [ ] Flash the firmware ([esp32/README.md](../../esp32/README.md)). The serial monitor should show `exhaust probe: found` and the failsafe %.
+- [ ] Flash `esp32/firmware/jbod-fans-1.2.0-esp32.bin` at 0x0 and do the Wi-Fi setup page ([build guide §5](../../docs/jbod/GUIDE.md#5-flash-the-esp32)). The serial monitor (115200) shows `exhaust probe: found` and the IP address. Give that IP a DHCP reservation.
 - [ ] Power up with all three fans connected: 100 % for 2 s, then 80 % (failsafe).
 - [ ] In the dashboard: Behaviour → JBOD fans → enable and enter the ESP32's address. The link shows "ok" and the mode changes to "server".
 - [ ] **Self-test fans** (dashboard button, ~36 s). Every fan must say `ok`; each

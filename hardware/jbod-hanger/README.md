@@ -1,6 +1,6 @@
 # JBOD fan hanger
 
-**Building one? Follow [CHECKLIST.md](CHECKLIST.md)**: go/no-go checks,
+**Building one? Start with the [build guide](../../docs/jbod/GUIDE.md)** (parts list, wiring diagram, flashing, assembly), and tick through [CHECKLIST.md](CHECKLIST.md): go/no-go checks,
 measurements, test prints, bench test and thermal acceptance, in order.
 
 A 3D-printed 1U rack tray that holds the ESP32 and power, with a hinged

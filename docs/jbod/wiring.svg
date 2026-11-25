@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 890" width="1200" height="890" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+<rect width="1200" height="890" fill="#fff"/>
+<text x="24" y="34" font-size="20" text-anchor="start" fill="#111" font-weight="700">JBOD fan controller: wiring</text>
+<text x="24" y="56" font-size="13" text-anchor="start" fill="#666" font-weight="400">Wires of the same colour/label connect. Every ⏚ is the same common ground. Pins are named, not drawn in board order.</text>
+<rect x="24" y="90" width="190" height="100" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="119.0" y="110" font-size="14" text-anchor="middle" fill="#111" font-weight="700">12 V DC jack</text>
+<text x="119.0" y="127" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">panel 5.5 × 2.1 mm</text>
+<text x="119" y="142" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">from a 12 V 2 A brick</text>
+<circle cx="214" cy="155" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="206" y="159.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">+12 V</text>
+<circle cx="214" cy="178" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="206" y="182.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GND</text>
+<polyline points="214,178 214,190" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="204" y1="190" x2="224" y2="190" stroke="#222" stroke-width="2"/>
+<line x1="207.5" y1="194" x2="220.5" y2="194" stroke="#222" stroke-width="2"/>
+<line x1="211" y1="198" x2="217" y2="198" stroke="#222" stroke-width="2"/>
+<polyline points="214,155 880,155" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="560" y="147" font-size="12" text-anchor="middle" fill="#d62828" font-weight="700">+12 V (fans and buck)</text>
+<circle cx="300" cy="155" r="4.5" fill="#d62828"/>
+<rect x="240" y="240" width="170" height="120" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="325.0" y="260" font-size="14" text-anchor="middle" fill="#111" font-weight="700">Buck 12 → 5 V</text>
+<text x="325.0" y="277" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">MP1584 / LM2596</text>
+<text x="325" y="293" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">set to 5.0 V first</text>
+<circle cx="300" cy="240" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="308" y="244.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">IN+</text>
+<circle cx="255" cy="360" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="263" y="364.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">IN−</text>
+<circle cx="410" cy="320" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="402" y="324.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">OUT+ 5 V</text>
+<circle cx="395" cy="360" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="387" y="364.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">OUT−</text>
+<polyline points="300,155 300,240" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="255,360 255,372" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="245" y1="372" x2="265" y2="372" stroke="#222" stroke-width="2"/>
+<line x1="248.5" y1="376" x2="261.5" y2="376" stroke="#222" stroke-width="2"/>
+<line x1="252" y1="380" x2="258" y2="380" stroke="#222" stroke-width="2"/>
+<polyline points="395,360 395,372" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="385" y1="372" x2="405" y2="372" stroke="#222" stroke-width="2"/>
+<line x1="388.5" y1="376" x2="401.5" y2="376" stroke="#222" stroke-width="2"/>
+<line x1="392" y1="380" x2="398" y2="380" stroke="#222" stroke-width="2"/>
+<circle cx="760" cy="155" r="4.5" fill="#d62828"/>
+<polyline points="760,155 760,186" fill="none" stroke="#d62828" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="746" y1="186" x2="774" y2="186" stroke="#555" stroke-width="2.5"/>
+<path d="M746 196 Q760 190 774 196" fill="none" stroke="#555" stroke-width="2.5"/>
+<text x="738" y="186" font-size="11.5" text-anchor="end" fill="#666" font-weight="400">470 µF 25 V</text>
+<text x="738" y="200" font-size="11.5" text-anchor="end" fill="#666" font-weight="400">(+ side up)</text>
+<polyline points="760,196 760,208" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="750" y1="208" x2="770" y2="208" stroke="#222" stroke-width="2"/>
+<line x1="753.5" y1="212" x2="766.5" y2="212" stroke="#222" stroke-width="2"/>
+<line x1="757" y1="216" x2="763" y2="216" stroke="#222" stroke-width="2"/>
+<rect x="470" y="250" width="230" height="430" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="585.0" y="270" font-size="14" text-anchor="middle" fill="#111" font-weight="700">ESP32 DevKit</text>
+<text x="585.0" y="287" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">ESP32-WROOM-32, 30 or 38 pin</text>
+<circle cx="470" cy="320" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="478" y="324.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">5V / VIN</text>
+<circle cx="470" cy="360" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="478" y="364.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">GND</text>
+<circle cx="470" cy="400" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="478" y="404.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">3V3</text>
+<circle cx="470" cy="460" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="478" y="464.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">GPIO4</text>
+<circle cx="700" cy="320" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="324.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO25</text>
+<circle cx="700" cy="360" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="364.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO26</text>
+<circle cx="700" cy="400" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="404.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO27</text>
+<circle cx="700" cy="470" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="474.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO32</text>
+<circle cx="700" cy="510" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="514.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO33</text>
+<circle cx="700" cy="550" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="554.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GPIO35</text>
+<circle cx="700" cy="630" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="692" y="634.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">GND</text>
+<text x="585.0" y="628" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">on board: LED = GPIO2</text>
+<text x="585.0" y="644" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">BOOT button = GPIO0</text>
+<text x="585.0" y="660" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">(hold 5 s: Wi-Fi setup again)</text>
+<polyline points="410,320 470,320" fill="none" stroke="#f77f00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="470,360 448,360" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="448,360 448,372" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="438" y1="372" x2="458" y2="372" stroke="#222" stroke-width="2"/>
+<line x1="441.5" y1="376" x2="454.5" y2="376" stroke="#222" stroke-width="2"/>
+<line x1="445" y1="380" x2="451" y2="380" stroke="#222" stroke-width="2"/>
+<polyline points="470,400 440,400" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="408.8" y="390" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="424.40000000000003" y="404.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<polyline points="470,460 440,460" fill="none" stroke="#b08900" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="386.6" y="450" width="53.400000000000006" height="20" rx="4" fill="#b08900"/>
+<text x="413.3" y="464.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">1-WIRE</text>
+<polyline points="700,320 730,320" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="310" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="749.3" y="324.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM1</text>
+<polyline points="700,360 730,360" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="350" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="749.3" y="364.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM2</text>
+<polyline points="700,400 730,400" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="390" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="749.3" y="404.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM3</text>
+<polyline points="700,470 730,470" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="460" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="753.0" y="474.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH1</text>
+<polyline points="700,510 730,510" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="500" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="753.0" y="514.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH2</text>
+<polyline points="700,550 730,550" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="730" y="540" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="753.0" y="554.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH3</text>
+<polyline points="700,630 722,630" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="722,630 722,642" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="712" y1="642" x2="732" y2="642" stroke="#222" stroke-width="2"/>
+<line x1="715.5" y1="646" x2="728.5" y2="646" stroke="#222" stroke-width="2"/>
+<line x1="719" y1="650" x2="725" y2="650" stroke="#222" stroke-width="2"/>
+<polyline points="880,155 930,155 930,682" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="960" y="160" width="210" height="150" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="1065.0" y="180" font-size="14" text-anchor="middle" fill="#111" font-weight="700">Fan 1 header</text>
+<text x="1065.0" y="197" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">4-pin PWM, 140 mm fan</text>
+<circle cx="960" cy="218" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="222.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">1 GND</text>
+<circle cx="960" cy="242" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="246.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">2 +12 V</text>
+<circle cx="960" cy="266" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="270.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">3 TACH</text>
+<circle cx="960" cy="290" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="294.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">4 PWM</text>
+<polyline points="960,218 946,218" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="946,218 946,230" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="936" y1="230" x2="956" y2="230" stroke="#222" stroke-width="2"/>
+<line x1="939.5" y1="234" x2="952.5" y2="234" stroke="#222" stroke-width="2"/>
+<line x1="943" y1="238" x2="949" y2="238" stroke="#222" stroke-width="2"/>
+<circle cx="930" cy="242" r="4.5" fill="#d62828"/>
+<polyline points="930,242 960,242" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="960,266 900,266" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="900" cy="266" r="4.5" fill="#2a9d4b"/>
+<rect x="816.0" y="256" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="839.0" y="270.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH1</text>
+<polyline points="862,266 900,266" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,266 900,252" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,252 894,250.0 906,246.0 894,242.0 906,238.0 894,234.0 906,230.0 900,228 900,220" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="889" y="244" font-size="11.5" text-anchor="end" fill="#666" font-weight="400">10k</text>
+<polyline points="900,220 880,220" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="848.8" y="210" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="864.4" y="224.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<rect x="823.4" y="280" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="842.6999999999999" y="294.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM1</text>
+<polyline points="862,290 960,290" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="960" y="380" width="210" height="150" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="1065.0" y="400" font-size="14" text-anchor="middle" fill="#111" font-weight="700">Fan 2 header</text>
+<text x="1065.0" y="417" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">4-pin PWM, 140 mm fan</text>
+<circle cx="960" cy="438" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="442.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">1 GND</text>
+<circle cx="960" cy="462" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="466.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">2 +12 V</text>
+<circle cx="960" cy="486" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="490.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">3 TACH</text>
+<circle cx="960" cy="510" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="514.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">4 PWM</text>
+<polyline points="960,438 946,438" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="946,438 946,450" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="936" y1="450" x2="956" y2="450" stroke="#222" stroke-width="2"/>
+<line x1="939.5" y1="454" x2="952.5" y2="454" stroke="#222" stroke-width="2"/>
+<line x1="943" y1="458" x2="949" y2="458" stroke="#222" stroke-width="2"/>
+<circle cx="930" cy="462" r="4.5" fill="#d62828"/>
+<polyline points="930,462 960,462" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="960,486 900,486" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="900" cy="486" r="4.5" fill="#2a9d4b"/>
+<rect x="816.0" y="476" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="839.0" y="490.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH2</text>
+<polyline points="862,486 900,486" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,486 900,472" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,472 894,470.0 906,466.0 894,462.0 906,458.0 894,454.0 906,450.0 900,448 900,440" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="889" y="464" font-size="11.5" text-anchor="end" fill="#666" font-weight="400">10k</text>
+<polyline points="900,440 880,440" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="848.8" y="430" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="864.4" y="444.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<rect x="823.4" y="500" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="842.6999999999999" y="514.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM2</text>
+<polyline points="862,510 960,510" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="960" y="600" width="210" height="150" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="1065.0" y="620" font-size="14" text-anchor="middle" fill="#111" font-weight="700">Fan 3 header</text>
+<text x="1065.0" y="637" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">4-pin PWM, 140 mm fan</text>
+<circle cx="960" cy="658" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="662.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">1 GND</text>
+<circle cx="960" cy="682" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="686.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">2 +12 V</text>
+<circle cx="960" cy="706" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="710.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">3 TACH</text>
+<circle cx="960" cy="730" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="968" y="734.5" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">4 PWM</text>
+<polyline points="960,658 946,658" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="946,658 946,670" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="936" y1="670" x2="956" y2="670" stroke="#222" stroke-width="2"/>
+<line x1="939.5" y1="674" x2="952.5" y2="674" stroke="#222" stroke-width="2"/>
+<line x1="943" y1="678" x2="949" y2="678" stroke="#222" stroke-width="2"/>
+<polyline points="930,682 960,682" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="960,706 900,706" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="900" cy="706" r="4.5" fill="#2a9d4b"/>
+<rect x="816.0" y="696" width="46.0" height="20" rx="4" fill="#2a9d4b"/>
+<text x="839.0" y="710.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">TACH3</text>
+<polyline points="862,706 900,706" fill="none" stroke="#2a9d4b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,706 900,692" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="900,692 894,690.0 906,686.0 894,682.0 906,678.0 894,674.0 906,670.0 900,668 900,660" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="889" y="684" font-size="11.5" text-anchor="end" fill="#666" font-weight="400">10k</text>
+<polyline points="900,660 880,660" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="848.8" y="650" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="864.4" y="664.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<rect x="823.4" y="720" width="38.6" height="20" rx="4" fill="#1d6fd1"/>
+<text x="842.6999999999999" y="734.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">PWM3</text>
+<polyline points="862,730 960,730" fill="none" stroke="#1d6fd1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="1065.0" y="776" font-size="12" text-anchor="middle" fill="#d62828" font-weight="700">Pull tach up to 3.3 V only, never 5 or 12 V.</text>
+<rect x="24" y="500" width="250" height="130" rx="8" fill="#f4f4f2" stroke="#555" stroke-width="1.5"/>
+<text x="149.0" y="520" font-size="14" text-anchor="middle" fill="#111" font-weight="700">DS18B20 probe (optional)</text>
+<text x="149.0" y="537" font-size="11.5" text-anchor="middle" fill="#666" font-weight="400">waterproof, taped in the JBOD exhaust</text>
+<circle cx="274" cy="550" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="266" y="554.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">red VDD</text>
+<circle cx="274" cy="578" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="266" y="582.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">yellow DQ</text>
+<circle cx="274" cy="606" r="3.5" fill="#fff" stroke="#555" stroke-width="1.5"/>
+<text x="266" y="610.5" font-size="12.5" text-anchor="end" fill="#111" font-weight="400">black GND</text>
+<polyline points="274,550 320,550" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="320" y="540" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="335.6" y="554.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<polyline points="274,578 380,578" fill="none" stroke="#b08900" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="380" y="568" width="53.400000000000006" height="20" rx="4" fill="#b08900"/>
+<text x="406.7" y="582.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">1-WIRE</text>
+<polyline points="274,606 296,606" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="296,606 296,618" fill="none" stroke="#222" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="286" y1="618" x2="306" y2="618" stroke="#222" stroke-width="2"/>
+<line x1="289.5" y1="622" x2="302.5" y2="622" stroke="#222" stroke-width="2"/>
+<line x1="293" y1="626" x2="299" y2="626" stroke="#222" stroke-width="2"/>
+<circle cx="350" cy="578" r="4.5" fill="#b08900"/>
+<polyline points="350,578 350,602" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="350,602 344,604.0 356,608.0 344,612.0 356,616.0 344,620.0 356,624.0 350,626 350,634" fill="none" stroke="#555" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="362" y="620" font-size="11.5" text-anchor="start" fill="#666" font-weight="400">4.7k</text>
+<polyline points="350,634 350,646" fill="none" stroke="#9d4edd" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="336" y="646" width="31.200000000000003" height="20" rx="4" fill="#9d4edd"/>
+<text x="351.6" y="660.5" font-size="12" text-anchor="middle" fill="#fff" font-weight="700">3V3</text>
+<text x="24" y="730" font-size="14" text-anchor="start" fill="#111" font-weight="700">Legend</text>
+<polyline points="24,752 54,752" fill="none" stroke="#d62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="62" y="756" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">+12 V</text>
+<polyline points="174,752 204,752" fill="none" stroke="#f77f00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="212" y="756" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">+5 V</text>
+<polyline points="324,752 354,752" fill="none" stroke="#9d4edd" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="362" y="756" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">3.3 V</text>
+<polyline points="474,752 504,752" fill="none" stroke="#222" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="512" y="756" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">ground</text>
+<polyline points="24,776 54,776" fill="none" stroke="#1d6fd1" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="62" y="780" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">PWM (25 kHz)</text>
+<polyline points="174,776 204,776" fill="none" stroke="#2a9d4b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="212" y="780" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">tach</text>
+<polyline points="324,776 354,776" fill="none" stroke="#b08900" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="362" y="780" font-size="12.5" text-anchor="start" fill="#111" font-weight="400">1-Wire</text>
+<text x="24" y="820" font-size="12.5" text-anchor="start" fill="#666" font-weight="400">Fan header, looking at the pins: 1 GND (black) · 2 +12 V (yellow/red) · 3 tach (green) · 4 PWM (blue); pin 1 is at the end next to the key.</text>
+<text x="24" y="840" font-size="12.5" text-anchor="start" fill="#666" font-weight="400">PWM straight from the GPIO suits most fans. If a fan ignores it, drive PWM through a 2N7000 (open drain) and set PWM_INVERTED 1.</text>
+<text x="24" y="860" font-size="12.5" text-anchor="start" fill="#d62828" font-weight="700">Set the buck to 5.0 V with a multimeter BEFORE connecting the ESP32.</text>
+</svg>

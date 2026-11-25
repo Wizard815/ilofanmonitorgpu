@@ -1,0 +1,2 @@
+a6cf4faaa9bffe51e19a3ef16f6b7c61c2d9b130ea325c732a514aeb1afe1440  jbod-fans-1.2.0-esp32.bin
+db778401d08cfc52cfdd5e8de1e77b260d8c19e761d124769e96b7e80f786b0f  jbod-fans-1.2.0-ota.bin

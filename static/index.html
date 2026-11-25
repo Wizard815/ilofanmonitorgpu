@@ -275,7 +275,7 @@ const FIELDS = [
     ['mem_offset_c', 'HBM offset', 'dT'], ['failsafe_fan_pct', 'Sensors lost →', '%'], ['failsafe_after_polls', 'After missed polls', ''], ['quantize_pct', 'Round up to', '%']]],
   ['GPU perf on demand', 'Locks clocks high while the GPUs are in use, back to auto after the idle time. Needs the writable sysfs mounts.', [
     ['perf_control', 'Enabled', 'bool'], ['perf_idle_sec', 'Idle before auto', 's'], ['perf_busy_pct', 'Active: busy ≥', '%'], ['perf_power_w', 'or power ≥', 'W']]],
-  ['JBOD fans (ESP32)', 'Drives: comma list of Unraid names (disk3), devices (sdf) or serial fragments. Empty = auto. Source "unraid" reads disks.ini; "smartctl" needs a privileged container.', [
+  ['JBOD fans (ESP32)', 'ESP32 address: use its IP (containers usually can\'t resolve .local). Drives: comma list of Unraid names (disk3), devices (sdf) or serial fragments. Empty = auto. Source "unraid" reads disks.ini; "smartctl" needs a privileged container.', [
     ['jbod_enabled', 'Enabled', 'bool'], ['jbod_host', 'ESP32 address', 'text'], ['jbod_source', 'Temp source', 'select:unraid,smartctl'], ['jbod_disks', 'Drives', 'text'],
     ['jbod_min_pct', 'Never below', '%'], ['jbod_failsafe_pct', 'Failsafe (ESP32 alone)', '%'], ['jbod_hold_sec', 'Hold before stepping', 's'],
     ['jbod_step_down_pct', 'Step size', '%'], ['jbod_step_down_sec', 'Every', 's'], ['jbod_poll_sec', 'Update every', 's']]],

@@ -52,8 +52,25 @@ Everything fits on a 7 × 9 cm perfboard, which screws onto the shelf in
 
 ## Flashing
 
-1. `cp jbod_fans/secrets.example.h jbod_fans/secrets.h` and fill in Wi-Fi,
-   `API_TOKEN` (same value as `JBOD_TOKEN` in docker-compose.yml) and `OTA_PASSWORD`.
+**Prebuilt (no toolchain):** flash `firmware/jbod-fans-1.2.0-esp32.bin` at address
+**0x0**, from https://espressif.github.io/esptool-js/ in Chrome/Edge or with
+`esptool --chip esp32 write-flash 0x0 firmware/jbod-fans-1.2.0-esp32.bin`.
+The full steps are in the [build guide](../docs/jbod/GUIDE.md#5-flash-the-esp32).
+
+**First boot:** join the Wi-Fi network `jbod-fans-setup` (password `jbodfans`)
+and fill in the page that opens (or go to `http://192.168.4.1/setup`): your
+Wi-Fi, the API token (same as `JBOD_TOKEN`), a name and an update password.
+Hold BOOT for 5 s to get back to setup later.
+
+**Updates:** open `http://<ip>/update?token=<token>` and upload `jbod-fans-X.Y.Z-ota.bin`.
+
+### Building from source
+
+Rebuild the prebuilt images with `./build_release.sh`. It refuses to run while
+a `secrets.h` exists, so your Wi-Fi details never end up in a shared file.
+
+1. Optional: `cp jbod_fans/secrets.example.h jbod_fans/secrets.h` to pre-fill
+   the setup page's defaults (handy for your own builds; never for a release).
 2. Pick a build route:
    - **PlatformIO** (it fetches the libraries itself). Run these from `esp32/`:
      ```bash
@@ -66,7 +83,7 @@ Everything fits on a 7 × 9 cm perfboard, which screws onto the shelf in
      **OneWire** and **DallasTemperature** libraries, open
      `jbod_fans/jbod_fans.ino`, board "ESP32 Dev Module", then upload.
      If you skip the probe, set `USE_EXHAUST_PROBE 0` and leave the libraries out.
-3. Later updates go over Wi-Fi:
+3. Later updates over Wi-Fi: use the `/update` page, or
    ```bash
    pio run -e ota -t upload --upload-flags=--auth=YOUR_OTA_PASSWORD
    ```
@@ -95,6 +112,8 @@ The firmware builds with Arduino-ESP32 core 3.x (tested 3.3) and should also bui
 | | |
 |---|---|
 | `GET /status` | `{mode, pct, cmd_pct, cmd_age_s, ttl_s, failsafe_pct, rpm[3], stalled[3], probe_c, server_temp_c, uptime_s, rssi, fw}` |
+| `GET/POST /setup` | Wi-Fi, token, name, update password. Open on the setup network; needs `?token=` on your LAN. |
+| `GET/POST /update` | Browser firmware upload (`-ota.bin`). Same access rule as `/setup`. |
 | `POST /selftest` | header `X-Token`. ~36 s wiring check: all fans at 30/60/100 %, then each alone at 100 %. Results (rpm + a verdict per fan: ok, no tach, PWM ignored, PWM inverted, crossed wires) appear under `selftest` in `/status`. Also a button on the dashboard. |
 | `POST /set?pct=N&ttl=S&fs=F&t=T` | header `X-Token`. pct 0–100, ttl 5–600 s, fs = failsafe 30–100 % (stored in flash), t = hottest drive (display only). Returns the status. |
 
