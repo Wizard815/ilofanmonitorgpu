@@ -13,6 +13,7 @@ import config
 import ilo_fan
 import jbod
 import loop
+import power
 
 app = Flask(__name__, static_folder=None)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -82,6 +83,34 @@ def api_jbod_selftest():
         return jsonify({"ok": True, "esp": jbod.start_selftest(config.load()["jbod_host"])})
     except Exception as e:
         return jsonify({"error": f"ESP32 not reachable: {e}"}), 502
+
+
+@app.route("/api/power", methods=["GET"])
+def api_power_get():
+    """Each MI50's power cap, allowed range, clock levels and any clock limit, plus the fan state, for Argos."""
+    st = loop.get_state_snapshot()
+    temps = {g.get("pci"): g for g in st.get("gpus") or []}
+    cards = [{**power.public(c), **{k: temps.get(c["pci"], {}).get(src) for k, src in
+                                    (("edge_c", "edge_c"), ("junction_c", "junction_c"), ("mem_c", "memory_c"))}}
+             for c in power.cards()]
+    return jsonify({"cards": cards, "guard_c": power.GUARD_C,
+                    "fans": {"phase": st.get("phase"), "floor_pct": st.get("floor_pct"), "control_c": st.get("control_c")}})
+
+
+@app.route("/api/power", methods=["POST"])
+def api_power_set():
+    """Body {"cards": {pci: {"cap_w": W or null (stock), "sclk_mhz": MHz or null (no limit)}}}. A raise is
+    refused while a GPU is at or above the guard temperature or the loop is in failsafe; a cut never is."""
+    if power.TOKEN and request.headers.get("X-Power-Token") != power.TOKEN:
+        return jsonify({"error": "X-Power-Token missing or wrong"}), 403
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("cards"), dict):
+        return jsonify({"error": "expected {\"cards\": {pci: {cap_w, sclk_mhz}}}"}), 400
+    st = loop.get_state_snapshot()
+    applied, errors = power.apply(body["cards"], control_c=st.get("control_c"), failsafe=st.get("phase") == "failsafe",
+                                  log=loop._log)
+    return jsonify({"ok": not errors, "applied": applied, "errors": errors,
+                    "cards": [power.public(c) for c in power.cards()]}), (200 if applied or not errors else 409)
 
 
 @app.route("/api/fans")
