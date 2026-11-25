@@ -52,9 +52,28 @@ def read_levels() -> dict:
     return out
 
 
+_forgot = False
+
+
+def forget() -> None:
+    """Someone else (power.py lifting a clock limit) wrote the level: write ours again on the next cycle."""
+    global _forgot
+    _forgot = True
+
+
+def _held() -> set:
+    """Dirs power.py holds at "manual" for a clock limit: left alone until it lifts it."""
+    import power  # imported here: power imports perf
+    held = power.held_cards()
+    return {name for name, path in _perf_files().items() if power._pci(os.path.dirname(path)) in held} if held else set()
+
+
 def set_level(level: str) -> bool:
     ok = True
+    held = _held()
     for pci, path in _perf_files().items():
+        if pci in held:
+            continue
         try:
             with open(path) as f:
                 if f.read().strip() == level:
@@ -82,6 +101,9 @@ class PerfController:
 
     def update(self, temps: list, settings: dict, now: float, log) -> dict:
         """Call once per loop cycle with the fresh sensor list. Returns UI state."""
+        global _forgot
+        if _forgot:
+            _forgot, self.mode = False, None
         files = _perf_files()
         if not settings.get("perf_control") or not files:
             if self.mode is not None:
