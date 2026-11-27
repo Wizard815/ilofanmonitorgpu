@@ -13,7 +13,7 @@ RUN pip3 install --no-cache-dir --break-system-packages requests flask gunicorn 
     || pip3 install --no-cache-dir requests flask gunicorn upp==0.2.4
 
 WORKDIR /app
-COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py jbod.py /app/
+COPY config.py ilo_fan.py loop.py app.py perf.py mclk.py jbod.py power.py metrics.py /app/
 COPY static /app/static
 
 # Settings persist here -- mount this as a volume so edits survive restarts.

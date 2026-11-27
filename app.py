@@ -8,12 +8,13 @@ The page (static/index.html) is fully client-side: it polls /api/state and
 import hmac
 import os
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 import config
 import ilo_fan
 import jbod
 import loop
+import metrics
 import power
 
 app = Flask(__name__, static_folder=None)
@@ -65,6 +66,14 @@ def _settings_payload(s: dict) -> dict:
 def api_state():
     return jsonify({"settings": _settings_payload(config.load()), "state": loop.get_state_snapshot(),
                     "jbod": jbod.snapshot()})
+
+
+@app.route("/metrics")
+def prometheus_metrics():
+    """Prometheus text format: GPU temps, fan minimum asked for and applied, iLO fan speeds, JBOD. Read-only and
+    open like /api/state."""
+    return Response(metrics.render(loop.get_state_snapshot(), jbod.snapshot()), mimetype=None,
+                    content_type=metrics.CONTENT_TYPE)
 
 
 @app.route("/api/history")

@@ -118,7 +118,8 @@ load; a customised 7-point curve is replaced by the default 6-point one.
 
 API: `GET /api/state`, `GET /api/history?since=<ts>`,
 `POST /api/settings` (any subset of the keys above, JSON),
-`POST /api/presets/{apply,save,delete}` (`{"name": ...}`), `GET /api/fans`.
+`POST /api/presets/{apply,save,delete}` (`{"name": ...}`), `GET /api/fans`,
+`GET /metrics` (Prometheus, see [Metrics](#metrics-prometheus)).
 
 Environment (compose): `ILO_HOST`, `ILO_VERIFY_SSL`, `ILO_SECRETS_PATH`,
 `SETTINGS_PATH`, `FAN_BRIDGE_MCLK` (MHz, or `off`), `FAN_BRIDGE_MCLK_PCI`
@@ -153,9 +154,57 @@ and keeps the `pp_dpm_sclk` levels at or below it.
   token). Without it, anyone who can reach port 5000 can change the caps.
 - Nothing persists: a reboot brings back the BIOS values.
 
+## Metrics (Prometheus)
+
+`GET /metrics` returns the live state in the Prometheus text format, for
+Prometheus, Grafana Agent, or Overseer's `fanbridge` collector. It reads the
+same in-memory state as `/api/state`: no iLO or ESP32 request is made per
+scrape, so scraping every 15-30 s costs nothing.
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: fan-bridge
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["192.168.20.5:5000"]
+```
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `fanbridge_gpu_edge_celsius`, `_junction_celsius`, `_hbm_celsius` | `card`, `pci` | GPU sensors |
+| `fanbridge_gpu_power_watts`, `fanbridge_gpu_busy_percent` | `card`, `pci` | load |
+| `fanbridge_gpu_loaded` | `card`, `pci` | 1 while the GPU counts as under load |
+| `fanbridge_control_celsius`, `fanbridge_predicted_celsius` | | what the curve runs on |
+| `fanbridge_target_fan_percent` | | fan minimum fan-bridge asks for |
+| `fanbridge_applied_fan_percent` | | fan minimum iLO has accepted |
+| `fanbridge_ilo_floor_percent` | | fan minimum as read back from iLO |
+| `fanbridge_baseline_fan_percent` | | what iLO runs on its own |
+| `fanbridge_ilo_fan_percent` | `fan` | actual speed of each chassis fan |
+| `fanbridge_ilo_ambient_celsius` | | iLO ambient sensor |
+| `fanbridge_phase` | `phase` | 1 for the current phase (`ilo`, `boost`, `hold`, `ramp`, `failsafe`, ...) |
+| `fanbridge_takeover` | | 1 while fan-bridge holds the fans above iLO's own speed |
+| `fanbridge_ilo_write_seconds`, `fanbridge_detect_to_applied_seconds` | | timing of the last raise |
+| `fanbridge_jbod_fan_rpm`, `fanbridge_jbod_fan_stalled` | `fan` | JBOD fans (only while JBOD control is on) |
+| `fanbridge_jbod_drive_celsius` | `drive`, `device` | drive temps (left out while a drive is spun down) |
+| `fanbridge_jbod_sent_fan_percent`, `_probe_celsius`, `_esp_up` | | JBOD fan speed, ESP32 probe, link |
+
+What goes wrong:
+
+- **A value is missing, not 0.** Unknown values (no sensor, no iLO readback
+  yet, a spun-down drive) are left out, so graphs show a gap instead of a
+  false 0. In dry-run (no iLO credentials) the `ilo_*` metrics never appear
+  and `fanbridge_dry_run` is 1.
+- **iLO reports fan speed in percent, not rpm.** Only the JBOD fans have rpm.
+- **It is open like the other reads**, even with `FAN_BRIDGE_TOKEN` set.
+  It shows temperatures and fan speeds, nothing that changes anything. Don't
+  publish port 5000 outside your LAN.
+- `fanbridge_ilo_write_seconds` is only updated by raises. A slow iLO shows
+  there first.
+
 ## Who can change things
 
-Reading (`/api/state`, `/api/history`, `GET /api/power`, `/api/fans`) is open
+Reading (`/api/state`, `/api/history`, `GET /api/power`, `/api/fans`, `/metrics`) is open
 to anyone who can reach port 5000. Set `FAN_BRIDGE_TOKEN` in
 `docker-compose.yml` so that changing anything needs it:
 
