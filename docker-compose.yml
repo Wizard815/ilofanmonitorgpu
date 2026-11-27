@@ -42,6 +42,9 @@ services:
       # Power cap API (/api/power, for Argos -> Profiles -> Power). Needs the
       # writable /gpu mounts below. Set a token to require X-Power-Token.
       - FAN_BRIDGE_POWER_TOKEN=
+      # Needed to change anything (settings, presets, self-test, power) once set;
+      # the page asks for it once. Empty: anyone on your network can change the fans.
+      - FAN_BRIDGE_TOKEN=
       - POWER_GUARD_C=95
       - UNRAID_DISKS_INI=/unraid/disks.ini
 

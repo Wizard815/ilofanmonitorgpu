@@ -254,9 +254,19 @@ function uTicks(c0, c1, stepF, stepC) {                  // nice ticks in the di
 }
 
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1600); }
-async function api(path, body) {
-  const r = await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
+// FAN_BRIDGE_TOKEN on the server: changes need it. Asked for once, kept in this browser.
+function fanToken() { try { return localStorage.getItem('fanToken') || ''; } catch (e) { return ''; } }
+function keepFanToken(t) { try { t ? localStorage.setItem('fanToken', t) : localStorage.removeItem('fanToken'); } catch (e) {} }
+async function api(path, body, again = true) {
+  const headers = {'Content-Type': 'application/json'};
+  if (fanToken()) headers['X-Fan-Token'] = fanToken();
+  const r = await fetch(path, body ? {method: 'POST', headers, body: JSON.stringify(body)} : {});
   const j = await r.json();
+  if (r.status === 401 && j.token && again) {
+    const t = (prompt('This fan bridge needs its token to change settings (FAN_BRIDGE_TOKEN in docker-compose.yml):') || '').trim();
+    if (t) { keepFanToken(t); return api(path, body, false); }
+  }
+  if (r.status === 401 && j.token) keepFanToken('');
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }

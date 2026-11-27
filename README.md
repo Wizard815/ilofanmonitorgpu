@@ -153,6 +153,20 @@ and keeps the `pp_dpm_sclk` levels at or below it.
   token). Without it, anyone who can reach port 5000 can change the caps.
 - Nothing persists: a reboot brings back the BIOS values.
 
+## Who can change things
+
+Reading (`/api/state`, `/api/history`, `GET /api/power`, `/api/fans`) is open
+to anyone who can reach port 5000. Set `FAN_BRIDGE_TOKEN` in
+`docker-compose.yml` so that changing anything needs it:
+
+- Settings, presets, the JBOD self-test and `POST /api/power` then need an
+  `X-Fan-Token` header with the same value. The page asks for it once and
+  keeps it in that browser.
+- `X-Power-Token` (`FAN_BRIDGE_POWER_TOKEN`) still works for `POST /api/power`
+  only, so Argos needs no change. Set both, or Argos gets a 401 on power.
+- **Without it**, anyone on your network can flatten the fan curves, and can
+  set `jbod_host` to their own machine, which is then sent `JBOD_TOKEN`.
+
 ## JBOD fans (ESP32)
 
 For a JBOD whose own fans can't be controlled (an HPE D3600 here), this
