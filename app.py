@@ -5,6 +5,7 @@ The page (static/index.html) is fully client-side: it polls /api/state and
 /api/history every second and saves changes through /api/settings.
 """
 
+import hmac
 import os
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -17,6 +18,29 @@ import power
 
 app = Flask(__name__, static_folder=None)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+# FAN_BRIDGE_TOKEN, when set, must come in the X-Fan-Token header of every
+# request that changes something (settings, presets, the self-test, power).
+# Reads stay open: the dashboard and Argos poll them. Without it anyone who can
+# reach port 5000 can change the fan curves, and can point jbod_host at their
+# own machine to be sent JBOD_TOKEN.
+TOKEN = os.environ.get("FAN_BRIDGE_TOKEN", "").strip()
+
+
+def _same(got, want) -> bool:
+    return bool(want) and hmac.compare_digest(str(got or "").encode(), want.encode())
+
+
+@app.before_request
+def _writes_need_the_token():
+    if request.method in ("GET", "HEAD", "OPTIONS") or not TOKEN:
+        return None
+    if _same(request.headers.get("X-Fan-Token"), TOKEN):
+        return None
+    # Argos sends only the power token, and only to /api/power.
+    if request.path == "/api/power" and _same(request.headers.get("X-Power-Token"), power.TOKEN):
+        return None
+    return jsonify({"error": "X-Fan-Token missing or wrong", "token": True}), 401
 
 # Started once at import time. gunicorn must run with --workers 1 (see
 # entrypoint.sh) or several loops would fight over the iLO setting.
@@ -101,7 +125,8 @@ def api_power_get():
 def api_power_set():
     """Body {"cards": {pci: {"cap_w": W or null (stock), "sclk_mhz": MHz or null (no limit)}}}. A raise is
     refused while a GPU is at or above the guard temperature or the loop is in failsafe; a cut never is."""
-    if power.TOKEN and request.headers.get("X-Power-Token") != power.TOKEN:
+    if power.TOKEN and not _same(request.headers.get("X-Power-Token"), power.TOKEN) \
+            and not _same(request.headers.get("X-Fan-Token"), TOKEN):
         return jsonify({"error": "X-Power-Token missing or wrong"}), 403
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or not isinstance(body.get("cards"), dict):
