@@ -1,5 +1,7 @@
 # ilofanmonitorgpu (fan-bridge)
 
+[![License: PolyForm Shield 1.0.0](https://img.shields.io/badge/license-PolyForm%20Shield%201.0.0-blue)](LICENSE)
+
 Drives HPE iLO chassis fans from GPU temperatures. iLO cannot see the
 temperature of add-in GPUs like the AMD Instinct MI50/MI60, so on its own
 it never spins the fans up for them. fan-bridge reads the GPU sensors every
@@ -263,3 +265,12 @@ duct in front of the drive bays, from a printed 1U tray.
 - The MCLK step and perf on demand write GPU sysfs files. Test any memory
   clock by hand first (perplexity unchanged, no RAS/dmesg errors, sane
   temperatures) before letting the container apply it at every start.
+
+## License
+
+fan-bridge is source-available under the
+[PolyForm Shield License 1.0.0](LICENSE). You can read, run, change and share
+it for free, including at work. You can't sell it or offer it as a competing
+product or hosted service without permission: open an issue titled
+"License request" to ask. [docs/LICENSING.md](docs/LICENSING.md) explains it
+in plain English. Versions published before the switch stay under MIT.
